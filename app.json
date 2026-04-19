@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Clip",
+    "slug": "clip",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "clip",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.clip.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Clip uses the microphone to capture voice input for data entry.",
+        "NSSpeechRecognitionUsageDescription": "Clip uses speech recognition to transcribe voice input."
+      }
+    },
+    "android": {
+      "package": "com.clip.app",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Clip uses the microphone to capture voice input for data entry."
+        }
+      ],
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
