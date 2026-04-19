@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import NetInfo from '@react-native-community/netinfo';
 import { getSupabaseClient } from './supabaseClient';
 
 type TemplateCatalogRow = {
@@ -16,6 +17,11 @@ type TemplateCatalogRow = {
 export async function syncTemplateCatalogFromSupabase(
   db: SQLiteDatabase,
 ): Promise<{ upserted: number; error?: string }> {
+  const net = await NetInfo.fetch();
+  if (!net.isConnected) {
+    return { upserted: 0, error: 'Offline' };
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     return { upserted: 0, error: 'Supabase not configured' };

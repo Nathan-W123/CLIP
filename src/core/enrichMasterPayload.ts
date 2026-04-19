@@ -1,5 +1,6 @@
 import type { Template } from './schemas';
 import type { ParsedPayload } from './payloadValidation';
+import { getLearnedSchemaSnapshot } from '../services/schemaLearning';
 
 /** Match template rows (including SQLite) when id omits `master-` prefix. */
 function inferMasterSchemaId(template: Template): string | null {
@@ -8,6 +9,13 @@ function inferMasterSchemaId(template: Template): string | null {
   if (keys.has('dolphin_count') && keys.has('observation_type')) return 'dolphin_observations';
   if (keys.has('coral_cover_pct') || (keys.has('site_area') && keys.has('transect')))
     return 'coral_reef_health';
+  if (
+    keys.has('brand') &&
+    keys.has('product_type') &&
+    keys.has('quantity')
+  ) {
+    return 'costco_inventory';
+  }
   return null;
 }
 
@@ -84,9 +92,157 @@ export function enrichParsedPayloadForMaster(
         kind: 'database_entry',
         fields: enrichDolphinObservationFields(transcript, fields),
       };
+    case 'costco_inventory':
+      return {
+        kind: 'database_entry',
+        fields: enrichCostcoInventoryFields(transcript, fields),
+      };
     default:
       return payload;
   }
+}
+
+function canonFieldKey(k: string): string {
+  return k.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+/** Map Title Case / stray LM keys onto snake_case Costco columns. */
+function normalizeCostcoAliases(
+  fields: Record<string, string | number | boolean | null>,
+): Record<string, string | number | boolean | null> {
+  const out: Record<string, string | number | boolean | null> = { ...fields };
+  const canon = new Set([
+    'brand',
+    'product_type',
+    'product_name',
+    'quantity',
+  ]);
+  const flex = out as Record<string, unknown>;
+  for (const [k, v] of Object.entries(flex)) {
+    const nk = canonFieldKey(k);
+    if (!canon.has(nk)) continue;
+    if (nk === k) continue;
+    const cur = flex[nk];
+    const empty =
+      cur == null ||
+      cur === '' ||
+      (typeof cur === 'string' && !String(cur).trim());
+    if (empty && v != null && v !== '') {
+      flex[nk] = v;
+      if (k !== nk) delete flex[k];
+    }
+  }
+  return flex as Record<string, string | number | boolean | null>;
+}
+
+function enrichCostcoInventoryFields(
+  transcript: string,
+  fields: Record<string, string | number | boolean | null>,
+): Record<string, string | number | boolean | null> {
+  let out = normalizeCostcoAliases({ ...fields });
+  const t = transcript.trim();
+  const tl = t.toLowerCase();
+  const learned = getLearnedSchemaSnapshot('costco_inventory');
+  const numOrWord = `(\\d+|${SPOKEN_NUM_WORDS})`;
+
+  const isEmpty = (v: unknown) =>
+    v == null ||
+    v === '' ||
+    (typeof v === 'string' && !v.trim()) ||
+    (typeof v === 'number' && !Number.isFinite(v));
+
+  if (isEmpty(out.quantity)) {
+    const patterns = [
+      new RegExp(`\\b(?:count|quantity|qty)\\.?\\s+(${numOrWord})\\b`, 'i'),
+      new RegExp(`\\b(${numOrWord})\\s+(?:units?|cases?|packs?)\\b`, 'i'),
+      new RegExp(`\\b(?:about|around|approx(?:imately)?|roughly)\\s+(${numOrWord})\\b`, 'i'),
+      new RegExp(`\\b(${numOrWord})\\s+of\\s+them\\b`, 'i'),
+      // "three kirkland signature toilet paper units" (number first, "units" later)
+      new RegExp(`\\b(${numOrWord})\\b(?:\\s+\\w+){0,8}\\s+(?:units?|items?)\\b`, 'i'),
+    ];
+    for (const re of patterns) {
+      const m = re.exec(t);
+      if (m) {
+        const n = parseSpokenInt(m[1]);
+        if (n !== null) {
+          out.quantity = n;
+          break;
+        }
+      }
+    }
+  }
+
+  if (isEmpty(out.brand)) {
+    const bm =
+      /\bbrand\s+(.+?)(?=\s+(?:type|product\s+type|product\s+name|count|quantity|qty)\b|$)/i.exec(
+        t,
+      );
+    if (bm) {
+      out.brand = bm[1].trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  if (isEmpty(out.product_type)) {
+    const tm =
+      /\b(?:type|product\s+type)\s+(.+?)(?=\s+(?:product\s+name|named|called|count|quantity|qty|brand)\b|$)/i.exec(
+        t,
+      );
+    if (tm) {
+      out.product_type = tm[1].trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  if (isEmpty(out.product_name)) {
+    const pm =
+      /\b(?:product\s+name|called|named|sku)\s+(.+?)(?=\s+(?:count|quantity|qty|type|brand)\b|$)/i.exec(
+        t,
+      );
+    if (pm) {
+      out.product_name = pm[1].trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  // Learned-value matching from historical rows (session cache built at app start).
+  const knownBrands = learned?.fields.brand?.textExamples ?? [];
+  if (isEmpty(out.brand) && knownBrands.length > 0) {
+    const hit = knownBrands.find(v => {
+      const n = v.trim().toLowerCase();
+      return n.length >= 3 && tl.includes(n);
+    });
+    if (hit) out.brand = hit;
+  }
+
+  const knownTypes = learned?.fields.product_type?.textExamples ?? [];
+  if (isEmpty(out.product_type) && knownTypes.length > 0) {
+    const hit = knownTypes.find(v => {
+      const n = v.trim().toLowerCase();
+      return n.length >= 3 && tl.includes(n);
+    });
+    if (hit) out.product_type = hit;
+  }
+
+  // Heuristic: "Kirkland ... toilet paper" without explicit "type"
+  if (isEmpty(out.product_type) && /\btoilet\s+paper\b/i.test(t)) {
+    out.product_type = 'toilet paper';
+  }
+
+  // "Kirkland Signature type toilet paper …" without leading "brand"
+  if (isEmpty(out.brand)) {
+    const leadType = /^(.+?)\s+type\s+/i.exec(t);
+    const chunk = leadType?.[1]?.trim();
+    if (chunk && !/^brand\b/i.test(chunk)) {
+      out.brand = chunk.replace(/\s+/g, ' ');
+    }
+  }
+
+  const unknown = (out as Record<string, unknown>).raw;
+  if (typeof unknown === 'string' && unknown.trim() && isEmpty(out.brand)) {
+    const head = /^([^.\n]+)/.exec(unknown.trim());
+    if (head) out.brand = head[1].trim().slice(0, 120);
+  }
+
+  delete (out as Record<string, unknown>).raw;
+  return out;
 }
 
 function enrichDolphinObservationFields(

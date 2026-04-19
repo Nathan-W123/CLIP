@@ -12,6 +12,7 @@ import type { Template } from '../core/schemas';
 import { applyMasterEnrichmentIfNeeded } from '../core/enrichMasterPayload';
 import { fallbackPayload, validateParsedPayload } from '../core/payloadValidation';
 import { transcribeAudioFile } from '../services/transcribe';
+import { getLearnedSchemaSnapshot } from '../services/schemaLearning';
 import type { ParseResult } from './cactus';
 
 const MODEL_ID =
@@ -58,6 +59,29 @@ Rules:
 - buoy: digits after "buoy" if spoken; else null.
 - observation_type: "dolphin" when dolphins/pods are described.`;
       }
+      if (
+        template.id === 'master-costco_inventory' ||
+        template.id.endsWith('-costco_inventory')
+      ) {
+        return `Return ONLY one JSON object (no markdown, no prose).
+Examples:
+Transcript "brand Kirkland Signature type toilet paper count 12"
+→ {"kind":"database_entry","fields":{"brand":"Kirkland Signature","product_type":"toilet paper","product_name":null,"quantity":12}}
+
+Transcript "Charmin ultra soft quantity three"
+→ {"kind":"database_entry","fields":{"brand":"Charmin","product_type":"toilet paper","product_name":"ultra soft","quantity":3}}
+
+Transcript "count five Kirkland frozen berries"
+→ {"kind":"database_entry","fields":{"brand":"Kirkland","product_type":"frozen","product_name":"berries","quantity":5}}
+
+Rules:
+- Keys MUST be exactly: brand, product_type, product_name, quantity (snake_case).
+- quantity: integer only. Map spoken numbers to integers (one→1, two→2, three→3, … twenty→20).
+- brand: manufacturer or Kirkland-style label spoken after "brand" or at start (e.g. Kirkland Signature, Charmin).
+- product_type: category (toilet paper, chicken, beverages, snacks, frozen, …).
+- product_name: specific line/SKU if stated after "called", "product name", or mid-phrase; else null.
+Never leave fields empty objects; use null only when truly unknown.`;
+      }
       const defs = template.schemaDefinition ?? [];
       if (defs.length > 0) {
         const inner = defs
@@ -79,6 +103,12 @@ Use string values unless clearly numeric or boolean.`;
     default:
       return '{"kind":"notes","body":"string"}';
   }
+}
+
+function schemaIdFromTemplate(template: Template): string | null {
+  if (template.type !== 'database_entry') return null;
+  if (template.id.startsWith('master-')) return template.id.slice('master-'.length);
+  return null;
 }
 
 export type VoiceParserContextValue = {
@@ -135,9 +165,15 @@ export function VoiceParserProvider({ children }: { children: React.ReactNode })
     async (transcript: string, template: Template): Promise<ParseResult | null> => {
       const trimmed = transcript.trim();
       if (!trimmed) return null;
+      const schemaId = schemaIdFromTemplate(template);
+      const learned = getLearnedSchemaSnapshot(schemaId);
+      const learnedBlock = learned
+        ? `\nUse this historical extraction memory to improve recall on unstructured speech:\n${learned.promptSummary}\n`
+        : '';
 
       const system = `You convert voice transcripts into structured JSON for an app template.
 ${jsonSchemaPrompt(template)}
+${learnedBlock}
 Rules: Output ONLY the JSON object. No markdown, no commentary.`;
 
       const messages = [

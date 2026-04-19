@@ -88,6 +88,18 @@ const MASTER_REGISTRY: Record<string, MasterSchema> = {
       { key: 'notes', label: 'Notes', pgType: 'text', valueType: 'text' },
     ],
   },
+  /** Matches `public.costco_inventory` and `supabase/costco_inventory.sql`. */
+  costco_inventory: {
+    id: 'costco_inventory',
+    displayName: 'Costco inventory',
+    supabaseTable: 'costco_inventory',
+    fields: [
+      { key: 'brand', label: 'Brand', pgType: 'text', valueType: 'text' },
+      { key: 'product_type', label: 'Product type', pgType: 'text', valueType: 'text' },
+      { key: 'product_name', label: 'Product name', pgType: 'text', valueType: 'text' },
+      { key: 'quantity', label: 'Quantity (units)', pgType: 'integer', valueType: 'integer' },
+    ],
+  },
 };
 
 export function listMasterSchemaIds(): string[] {

@@ -2,13 +2,13 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { migrateDb } from '../src/db/migrate';
-import { syncTemplateCatalogFromSupabase } from '../src/services/syncTemplateCatalog';
+import { bootstrapOfflineCache } from '../src/services/bootstrapOfflineCache';
 
 function AppStack() {
   const db = useSQLiteContext();
 
   useEffect(() => {
-    void syncTemplateCatalogFromSupabase(db);
+    void bootstrapOfflineCache(db);
   }, [db]);
 
   return (
