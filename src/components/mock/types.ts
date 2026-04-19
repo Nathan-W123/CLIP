@@ -41,6 +41,11 @@ export interface MockProject {
   id: string;
   title: string;
   type: ProjectType;
+  /**
+   * When set, voice capture on the record flow uses this master schema (column layout + target Supabase table).
+   * All projects sharing the same id sync into the same master table (e.g. every Dolphin Observations project).
+   */
+  masterSchemaId?: string;
   syncStatus: ProjectSyncStatus;
   // ISO timestamp used for sorting/grouping by the last recording session.
   lastUsedAt: string;

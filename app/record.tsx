@@ -21,28 +21,27 @@ import {
   recordMockCapture,
   appendTranscriptionNote,
 } from '../src/components/mock';
-import type { ProjectType } from '../src/components/mock';
 import { transcribeAudioFile } from '../src/services/transcribe';
 import { Images } from '../src/assets/images';
 import { insertCapture } from '../src/db/capturesRepository';
 import { trySyncCaptures } from '../src/services/syncCaptures';
-import { getTemplateById } from '../src/core/templates';
+import { applyMasterEnrichmentIfNeeded } from '../src/core/enrichMasterPayload';
+import { coerceFieldValues } from '../src/core/masterSchemas';
+import {
+  resolveMasterTableForProject,
+  resolveRecordTemplateAsync,
+} from '../src/core/recordTemplate';
 import { VoiceParserProvider } from '../src/voice/VoiceParserProvider';
 import { useVoiceParser } from '../src/voice/useVoiceParser';
 import { validateRecord } from '../src/core/validation';
 import { fallbackPayload } from '../src/core/payloadValidation';
 import type { ClipRecord } from '../src/core/schemas';
+import type { DatabaseEntryPayload, ParsedPayload } from '../src/core/payloadValidation';
 import { randomUuid } from '../src/utils/randomUuid';
 
 type CaptureState = 'idle' | 'listening' | 'processing';
 
 const MIC_SIZE = 80;
-
-function templateIdForProjectType(t: ProjectType): string {
-  if (t === 'checklist') return 'tmpl-checklist';
-  if (t === 'data_collection') return 'tmpl-data-collection';
-  return 'tmpl-notes';
-}
 
 /** iOS: linear PCM WAV @ 16 kHz (backend-native). Android: AAC m4a → server ffmpeg if installed. */
 function recordingOptions(): Audio.RecordingOptions {
@@ -167,7 +166,7 @@ function RecordScreenInner() {
         setCaptureState('idle');
         return;
       }
-      const tmpl = getTemplateById(templateIdForProjectType(project.type));
+      const tmpl = await resolveRecordTemplateAsync(db, project);
       if (!tmpl) {
         setErrorMessage('No template for this project.');
         setCaptureState('idle');
@@ -175,16 +174,30 @@ function RecordScreenInner() {
       }
 
       const pr = await parseTranscript(transcriptText, tmpl);
+      let payload: ParsedPayload =
+        (pr?.record.payload as ParsedPayload | undefined) ??
+        fallbackPayload(tmpl, transcriptText);
+      payload = applyMasterEnrichmentIfNeeded(tmpl, transcriptText, payload);
+      const masterTable = resolveMasterTableForProject(project);
+      if (masterTable && payload && typeof payload === 'object') {
+        const maybe = payload as { kind?: string; fields?: Record<string, string | number | boolean | null> };
+        if (maybe.kind === 'database_entry' && maybe.fields) {
+          maybe.fields = coerceFieldValues(masterTable, maybe.fields);
+          payload = maybe as DatabaseEntryPayload;
+        }
+      }
+
       const record: ClipRecord = {
         id: randomUuid(),
         templateId: tmpl.id,
         templateName: tmpl.name,
-        payload: pr?.record.payload ?? fallbackPayload(tmpl, transcriptText),
+        payload,
         rawTranscript: transcriptText,
         confidenceScore: pr?.confidence ?? 0.45,
         validated: false,
         synced: false,
         capturedAt: new Date().toISOString(),
+        masterTable,
       };
       record.validated = validateRecord(record).valid;
       await insertCapture(db, record, 'record_screen', projectId);

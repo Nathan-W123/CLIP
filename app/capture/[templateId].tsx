@@ -2,10 +2,11 @@
 // Navigates back to home after a successful save.
 
 import { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
+import { View, Text, Image, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getTemplateById } from '../../src/core/sqlite.expo';
+import { useSQLiteContext } from 'expo-sqlite';
+import { getTemplateByIdWithDb } from '../../src/core/sqlite.expo';
 import { VoiceParserProvider } from '../../src/voice/VoiceParserProvider';
 import { VoiceCapture } from '../../src/components/VoiceCapture';
 import { Images } from '../../src/assets/images';
@@ -14,16 +15,34 @@ import type { Template, ClipRecord } from '../../src/core/schemas';
 export default function CaptureScreen() {
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const router = useRouter();
-  const [template, setTemplate] = useState<Template | null>(null);
+  const db = useSQLiteContext();
+  const [template, setTemplate] = useState<Template | null | undefined>(undefined);
 
   useEffect(() => {
-    const t = getTemplateById(templateId);
-    setTemplate(t);
-  }, [templateId]);
+    let cancelled = false;
+    (async () => {
+      const t = await getTemplateByIdWithDb(db, templateId);
+      if (!cancelled) setTemplate(t);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [db, templateId]);
 
   const handleSaved = (_record: ClipRecord) => {
     router.back();
   };
+
+  if (template === undefined) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <Header onBack={() => router.back()} />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!template) {
     return (

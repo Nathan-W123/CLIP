@@ -1,6 +1,7 @@
 /**
  * Template catalog for capture flows.
- * Persisted captures live in expo-sqlite via src/db/capturesRepository.ts.
+ * Templates are seeded into SQLite (`template_schemas`) on migrate; prefer `getTemplateByIdWithDb` when you have `db`.
  */
 
 export { getTemplateById } from './templates';
+export { getTemplateByIdWithDb } from '../db/templateSchemas';

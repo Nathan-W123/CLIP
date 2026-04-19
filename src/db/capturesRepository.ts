@@ -12,8 +12,8 @@ export async function insertCapture(
   await db.runAsync(
     `INSERT INTO captures (
       id, template_id, template_name, project_id, raw_transcript, parsed_json,
-      confidence, validated, synced, source, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      confidence, validated, synced, source, created_at, master_table
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     row.id,
     row.templateId,
     row.templateName,
@@ -25,6 +25,7 @@ export async function insertCapture(
     row.synced ? 1 : 0,
     source,
     row.capturedAt,
+    row.masterTable ?? null,
   );
 }
 
@@ -47,6 +48,7 @@ export type CaptureRow = {
   synced: number;
   source: string;
   created_at: string;
+  master_table: string | null;
 };
 
 export async function listUnsyncedCaptures(db: SQLiteDatabase, limit = 50): Promise<CaptureRow[]> {

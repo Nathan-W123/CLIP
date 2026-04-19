@@ -23,6 +23,7 @@ function formatShortDate(date: Date): string {
 const coralReefHealth: MockProject = {
   id: 'proj-coral-reef',
   title: 'Coral reef health',
+  masterSchemaId: 'coral_reef_health',
   type: 'checklist',
   syncStatus: 'pending',
   lastUsedAt: minutesAgoIso(12),
@@ -109,6 +110,7 @@ const coralReefHealth: MockProject = {
 const dolphinObservations: MockProject = {
   id: 'proj-dolphin-obs',
   title: 'Dolphin Observations',
+  masterSchemaId: 'dolphin_observations',
   type: 'data_collection',
   syncStatus: 'synced',
   lastUsedAt: daysAgoIso(21, 14, 15),

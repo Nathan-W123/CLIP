@@ -9,6 +9,7 @@ import React, {
 import { Platform } from 'react-native';
 import { useCactusLM } from 'cactus-react-native';
 import type { Template } from '../core/schemas';
+import { applyMasterEnrichmentIfNeeded } from '../core/enrichMasterPayload';
 import { fallbackPayload, validateParsedPayload } from '../core/payloadValidation';
 import { transcribeAudioFile } from '../services/transcribe';
 import type { ParseResult } from './cactus';
@@ -40,10 +41,41 @@ Use short titles for steps inferred from the transcript.`;
       return `Return a single JSON object only:
 {"kind":"notes","body":"string","title":"optional string"}
 Put the main content in body.`;
-    case 'database_entry':
+    case 'database_entry': {
+      if (template.id === 'master-dolphin_observations') {
+        return `Return ONLY one JSON object (no markdown, no prose).
+Examples:
+Transcript "6 dolphins spotted near location 12"
+→ {"kind":"database_entry","fields":{"observation_type":"dolphin","dolphin_count":6,"location":"12","buoy":null}}
+
+Transcript "pod of 4 spotted near location 1"
+→ {"kind":"database_entry","fields":{"observation_type":"dolphin","dolphin_count":4,"location":"1","buoy":null}}
+
+Rules:
+- Keys MUST be exactly: observation_type, dolphin_count, location, buoy.
+- dolphin_count: integer (from "6 dolphins", "pod of 4", etc.).
+- location: digits after the word "location" (e.g. location 12 → "12").
+- buoy: digits after "buoy" if spoken; else null.
+- observation_type: "dolphin" when dolphins/pods are described.`;
+      }
+      const defs = template.schemaDefinition ?? [];
+      if (defs.length > 0) {
+        const inner = defs
+          .map(f => {
+            const t = f.valueType ? ` [type: ${f.valueType}]` : '';
+            return `    "${f.key}": <${f.label}>${t}  // column "${f.key}"`;
+          })
+          .join(',\n');
+        return `Return a single JSON object only. Keys MUST match these database column names exactly:
+{"kind":"database_entry","fields":{
+${inner}
+}}
+Use JSON numbers for integer/real fields, booleans where appropriate, strings for text. Use null only when unknown.`;
+      }
       return `Return a single JSON object only:
 {"kind":"database_entry","fields":{"key":"value",...}}
 Use string values unless clearly numeric or boolean.`;
+    }
     default:
       return '{"kind":"notes","body":"string"}';
   }
@@ -121,13 +153,29 @@ Rules: Output ONLY the JSON object. No markdown, no commentary.`;
           messages,
           options: { temperature: 0, maxTokens: 1024 },
         });
-        if (!result.success) return null;
+        if (!result.success) {
+          const fb = applyMasterEnrichmentIfNeeded(
+            template,
+            trimmed,
+            fallbackPayload(template, trimmed),
+          );
+          return {
+            record: {
+              templateId: template.id,
+              templateName: template.name,
+              payload: fb,
+              rawTranscript: trimmed,
+            },
+            confidence: 0.22,
+            latencyMs: result.totalTimeMs ?? 0,
+          };
+        }
         const jsonText = extractJsonObject(result.response);
         let parsed: unknown;
         try {
           parsed = JSON.parse(jsonText);
         } catch {
-          const fb = fallbackPayload(template, trimmed);
+          const fb = applyMasterEnrichmentIfNeeded(template, trimmed, fallbackPayload(template, trimmed));
           return {
             record: {
               templateId: template.id,
@@ -141,7 +189,8 @@ Rules: Output ONLY the JSON object. No markdown, no commentary.`;
         }
 
         const v = validateParsedPayload(template, parsed);
-        const payload = v.ok ? v.payload : fallbackPayload(template, trimmed);
+        let payload = v.ok ? v.payload : fallbackPayload(template, trimmed);
+        payload = applyMasterEnrichmentIfNeeded(template, trimmed, payload);
         const modelConf =
           typeof result.confidence === 'number' && !Number.isNaN(result.confidence)
             ? result.confidence
@@ -159,7 +208,7 @@ Rules: Output ONLY the JSON object. No markdown, no commentary.`;
           latencyMs: result.totalTimeMs ?? 0,
         };
       } catch {
-        const fb = fallbackPayload(template, trimmed);
+        const fb = applyMasterEnrichmentIfNeeded(template, trimmed, fallbackPayload(template, trimmed));
         return {
           record: {
             templateId: template.id,
