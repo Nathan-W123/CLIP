@@ -199,7 +199,7 @@ function CreateOption({
       <Text style={styles.createOptionLabel} numberOfLines={1}>
         {label}
       </Text>
-      <Image source={imageSource} style={styles.createOptionImage} resizeMode="contain" />
+      <Image source={imageSource} style={styles.createOptionImage} resizeMode="cover" />
     </Pressable>
   );
 }
@@ -568,8 +568,8 @@ const styles = StyleSheet.create({
   },
   createOption: {
     flex: 1,
-    height: 128,
-    borderRadius: 8,
+    height: 160,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     backgroundColor: Colors.background,
@@ -580,10 +580,12 @@ const styles = StyleSheet.create({
   createOptionLabel: {
     ...Type.headline,
     color: Colors.textPrimary,
-    marginBottom: 8,
   },
   createOptionImage: {
-    width: '100%',
-    flex: 1,
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 130,
+    height: 130,
   },
 });
