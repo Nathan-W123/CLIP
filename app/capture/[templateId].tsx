@@ -10,6 +10,7 @@ import { getTemplateByIdWithDb } from '../../src/core/sqlite.expo';
 import { VoiceParserProvider } from '../../src/voice/VoiceParserProvider';
 import { VoiceCapture } from '../../src/components/VoiceCapture';
 import { Images } from '../../src/assets/images';
+import { Colors } from '../../src/components/ui/colors';
 import type { Template, ClipRecord } from '../../src/core/schemas';
 
 export default function CaptureScreen() {
@@ -93,7 +94,7 @@ function Header({ onBack }: { onBack: () => void }) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#F2F2F2',
+    backgroundColor: Colors.backgroundScreen,
   },
   container: {
     flex: 1,
@@ -117,17 +118,17 @@ const styles = StyleSheet.create({
   },
   notFound: {
     fontSize: 16,
-    color: '#999',
+    color: Colors.textTertiary,
   },
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111',
+    color: Colors.textPrimary,
     marginBottom: 10,
   },
   hint: {
     fontSize: 14,
-    color: '#AAA',
+    color: Colors.textTertiary,
     lineHeight: 20,
     marginBottom: 40,
   },

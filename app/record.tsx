@@ -280,10 +280,6 @@ function RecordScreenInner() {
               ? 'Tap to stop'
               : 'Transcribing & saving…'}
         </Text>
-        <Text style={styles.apiHint}>
-          Server:{' '}
-          {process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8000'}
-        </Text>
       </View>
     </SafeAreaView>
   );
@@ -365,12 +361,6 @@ const styles = StyleSheet.create({
   captureHint: {
     ...Type.subhead,
     color: Colors.textTertiary,
-    textAlign: 'center',
-  },
-  apiHint: {
-    ...Type.micro,
-    color: Colors.textTertiary,
-    opacity: 0.85,
     textAlign: 'center',
   },
 });

@@ -1,15 +1,16 @@
-import React, { useCallback, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  Image,
   ScrollView,
   Pressable,
   StyleSheet,
+  ActivityIndicator,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../../src/components/ui/colors';
 import { Type } from '../../src/components/ui/typography';
@@ -17,10 +18,24 @@ import { NoteSection } from '../../src/components/ui';
 import {
   findMockProjectById,
   findProjectContent,
-  getVoiceCaptureSection,
 } from '../../src/components/mock';
 import { Images } from '../../src/assets/images';
 import type { ChecklistStep, MockProject, ProjectSection } from '../../src/components/mock';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CapturedNote {
+  id: string;
+  templateName: string;
+  payload: Record<string, string | number | boolean>;
+  rawTranscript: string;
+  confidenceScore: number;
+  capturedAt: string;
+}
+
+type CaptureState = 'idle' | 'recording' | 'parsing';
+
+const USE_MOCK = true;
 
 // ─── Star badge ───────────────────────────────────────────────────────────────
 
@@ -77,22 +92,79 @@ function EmptyProjectNotes({ project }: { project: MockProject }) {
   return <NoteSection section={section} />;
 }
 
+// ─── Captured note card (swipe left to delete) ────────────────────────────────
+
+const DELETE_THRESHOLD = 80;
+
+function NoteCard({ note, onDelete }: { note: CapturedNote; onDelete: () => void }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_, g) => {
+        if (g.dx < 0) translateX.setValue(g.dx);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dx < -DELETE_THRESHOLD) {
+          Animated.timing(translateX, { toValue: -300, duration: 200, useNativeDriver: true }).start(onDelete);
+        } else {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  const deleteOpacity = translateX.interpolate({ inputRange: [-DELETE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: 'clamp' });
+
+  return (
+    <View style={{ overflow: 'hidden', borderRadius: 12 }}>
+      <Animated.View style={[styles.deleteAction, { opacity: deleteOpacity }]}>
+        <Text style={styles.deleteLabel}>Delete</Text>
+      </Animated.View>
+      <Animated.View style={[styles.noteCard, { transform: [{ translateX }] }]} {...panResponder.panHandlers}>
+        <View style={styles.noteCardHeader}>
+          <Text style={styles.noteTemplateName}>{note.templateName}</Text>
+          <Text style={styles.noteTime}>
+            {new Date(note.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+        <Text style={styles.noteTranscript}>{note.rawTranscript}</Text>
+        {Object.entries(note.payload).map(([k, v]) => (
+          <Text key={k} style={styles.noteField}>
+            {k}: {String(v)}
+          </Text>
+        ))}
+      </Animated.View>
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const [noteRefresh, setNoteRefresh] = useState(0);
+
+  const [captureState, setCaptureState] = useState<CaptureState>('idle');
+  const [capturedNotes, setCapturedNotes] = useState<CapturedNote[]>([]);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (captureState === 'recording') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.5, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
+    }
+  }, [captureState]);
 
   const project = id ? findMockProjectById(id) : undefined;
-
-  useFocusEffect(
-    useCallback(() => {
-      setNoteRefresh(n => n + 1);
-    }, []),
-  );
-
-  void noteRefresh;
 
   if (!project) {
     return (
@@ -104,11 +176,34 @@ export default function ProjectDetailScreen() {
     );
   }
 
-  function handleCapturePress() {
-    const projectId = Array.isArray(id) ? id[0] : id;
-    if (!projectId) return;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push(`/record?projectId=${encodeURIComponent(String(projectId))}` as never);
+  async function handleCapturePress() {
+    if (captureState === 'parsing') return;
+
+    if (USE_MOCK) {
+      if (captureState === 'idle') {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setCaptureState('recording');
+      } else if (captureState === 'recording') {
+        setCaptureState('parsing');
+        const note: CapturedNote = {
+          id: Math.random().toString(36).slice(2),
+          templateName: 'Field Note',
+          payload: { observation: 'Sample parsed field' },
+          rawTranscript: 'This is a simulated voice note capture.',
+          confidenceScore: 0.92,
+          capturedAt: new Date().toISOString(),
+        };
+        setCapturedNotes((prev: CapturedNote[]) => [note, ...prev]);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setCaptureState('idle');
+      }
+      return;
+    }
+  }
+
+  function deleteNote(noteId: string) {
+    setCapturedNotes((prev: CapturedNote[]) => prev.filter((n: CapturedNote) => n.id !== noteId));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
   const typeLabel =
@@ -125,9 +220,10 @@ export default function ProjectDetailScreen() {
   const pageContent =
     completedSteps.length === 0 ? findProjectContent(project.id) : null;
 
-  const voiceSection: ProjectSection | null = getVoiceCaptureSection(
-    project.id,
-  );
+  const captureBtnBg =
+    captureState === 'recording' ? '#E53E3E'
+    : captureState === 'parsing'  ? Colors.textTertiary
+    : Colors.orange;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -136,7 +232,7 @@ export default function ProjectDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topIcon}>
-          <Image source={Images.clipLogo} style={{ width: 30, height: 32 }} resizeMode="contain" />
+          <Images.ProjectStarIcon width={30} height={32} />
         </View>
 
         <Pressable
@@ -157,7 +253,15 @@ export default function ProjectDetailScreen() {
         </View>
         <Text style={styles.typeLabel}>{typeLabel}</Text>
 
-        {/* Existing content */}
+        {capturedNotes.length > 0 && (
+          <View style={styles.capturedSection}>
+            {capturedNotes.map((note: CapturedNote) => (
+              <NoteCard key={note.id} note={note} onDelete={() => deleteNote(note.id)} />
+            ))}
+            <View style={styles.capturedDivider} />
+          </View>
+        )}
+
         {completedSteps.length > 0 ? (
           <View style={styles.stepsContainer}>
             {completedSteps.map((step, i) => (
@@ -173,31 +277,31 @@ export default function ProjectDetailScreen() {
               <NoteSection key={section.id} section={section} />
             ))}
           </View>
-        ) : !voiceSection ? (
+        ) : (
           <View style={styles.sectionsContainer}>
             <EmptyProjectNotes project={project} />
           </View>
-        ) : null}
-
-        {voiceSection ? (
-          <View style={styles.sectionsContainer}>
-            <NoteSection section={voiceSection} />
-          </View>
-        ) : null}
+        )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Capture bar */}
       <View style={styles.captureBar}>
         <Pressable
-          style={[styles.captureBtn, { backgroundColor: Colors.orange }]}
+          style={[styles.captureBtn, { backgroundColor: captureBtnBg }]}
           onPress={handleCapturePress}
+          disabled={captureState === 'parsing'}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Images.MicIcon width={18} height={22} />
-            <Text style={styles.captureLabel}>Capture</Text>
-          </View>
+          {captureState === 'parsing' ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Animated.View style={{ opacity: captureState === 'recording' ? pulseAnim : 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Images.MicIcon width={18} height={22} />
+              <Text style={styles.captureLabel}>
+                {captureState === 'recording' ? 'Stop' : 'Capture'}
+              </Text>
+            </Animated.View>
+          )}
         </Pressable>
       </View>
     </SafeAreaView>
@@ -251,6 +355,67 @@ const styles = StyleSheet.create({
     ...Type.subhead,
     color: Colors.textTertiary,
     marginBottom: 28,
+  },
+
+  // Captured notes
+  capturedSection: {
+    marginBottom: 8,
+    gap: 10,
+  },
+  capturedDivider: {
+    height: 1,
+    backgroundColor: Colors.borderSubtle,
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  noteCard: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: 12,
+    padding: 14,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  noteCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  noteTemplateName: {
+    ...Type.bodyMedium,
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+  noteTime: {
+    ...Type.caption,
+    color: Colors.textTertiary,
+  },
+  noteTranscript: {
+    ...Type.body,
+    color: Colors.textPrimary,
+    lineHeight: 22,
+  },
+  noteField: {
+    ...Type.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  deleteAction: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: DELETE_THRESHOLD,
+    backgroundColor: '#E53E3E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  deleteLabel: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 
   // Step blocks
