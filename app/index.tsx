@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +14,7 @@ import {
 import type { ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { StatusPill, SectionHeader } from '../src/components/ui';
 import { Colors } from '../src/components/ui/colors';
 import { Type } from '../src/components/ui/typography';
@@ -24,9 +27,10 @@ import {
 } from '../src/components/mock';
 import { Images } from '../src/assets/images';
 import { SyncStatus } from '../src/components/SyncStatus';
-import type { MockProject, ProjectType } from '../src/components/mock';
-
-type CreatableProjectType = Extract<ProjectType, 'checklist' | 'data_collection'>;
+import type { MockProject } from '../src/components/mock';
+import type { DatabaseTemplateOption } from '../src/db/templateSchemas';
+import { listDatabaseTemplateOptions } from '../src/db/templateSchemas';
+import { syncTemplateCatalogFromSupabase } from '../src/services/syncTemplateCatalog';
 
 function ProjectIcon({ color, size = 46 }: { color: string; size?: number }) {
   const starSize = Math.round(size * 0.52);
@@ -144,16 +148,30 @@ function CreateProjectSheet({
   visible,
   progress,
   onClose,
-  onCreate,
+  dbTemplates,
+  templatesLoading,
+  onCreateChecklist,
+  onCreateDataWithTemplate,
+  onCreateGenericDataCollection,
 }: {
   visible: boolean;
   progress: Animated.Value;
   onClose: () => void;
-  onCreate: (type: CreatableProjectType) => void;
+  dbTemplates: DatabaseTemplateOption[];
+  templatesLoading: boolean;
+  onCreateChecklist: () => void;
+  onCreateDataWithTemplate: (t: DatabaseTemplateOption) => void;
+  onCreateGenericDataCollection: () => void;
 }) {
+  const [phase, setPhase] = useState<'type' | 'database'>('type');
+
+  useEffect(() => {
+    if (!visible) setPhase('type');
+  }, [visible]);
+
   const translateY = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [280, 0],
+    outputRange: [560, 0],
   });
 
   return (
@@ -163,22 +181,82 @@ function CreateProjectSheet({
         pointerEvents={visible ? 'auto' : 'none'}
         style={[styles.createSheet, { transform: [{ translateY }] }]}
       >
-        <View style={styles.sheetTitleRow}>
-          <Text style={styles.sheetTitle}>Create Project</Text>
-          <Image source={Images.clipLogo} style={{ width: 32, height: 34 }} resizeMode="contain" />
-        </View>
-        <View style={styles.createOptions}>
-          <CreateOption
-            label="Checklist"
-            imageSource={Images.checklistIcon}
-            onPress={() => onCreate('checklist')}
-          />
-          <CreateOption
-            label="Data Collection"
-            imageSource={Images.dataCollectionIcon}
-            onPress={() => onCreate('data_collection')}
-          />
-        </View>
+        {phase === 'type' ? (
+          <>
+            <View style={styles.sheetTitleRow}>
+              <Text style={styles.sheetTitle}>Create Project</Text>
+              <Image source={Images.clipLogo} style={{ width: 32, height: 34 }} resizeMode="contain" />
+            </View>
+            <View style={styles.createOptions}>
+              <CreateOption
+                label="Checklist"
+                imageSource={Images.checklistIcon}
+                onPress={onCreateChecklist}
+              />
+              <CreateOption
+                label="Data Collection"
+                imageSource={Images.dataCollectionIcon}
+                onPress={() => setPhase('database')}
+              />
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.sheetTitleRow}>
+              <Pressable
+                onPress={() => setPhase('type')}
+                hitSlop={12}
+                style={({ pressed }) => [styles.sheetBackBtn, pressed && styles.cardPressed]}
+              >
+                <Text style={styles.sheetBackLabel}>Back</Text>
+              </Pressable>
+              <Text style={[styles.sheetTitle, styles.sheetTitleFlex]}>Choose database</Text>
+              <View style={{ width: 48 }} />
+            </View>
+            <ScrollView
+              style={styles.databaseScroll}
+              contentContainerStyle={styles.databaseScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {templatesLoading ? (
+                <View style={styles.templatesLoading}>
+                  <ActivityIndicator color={Colors.orange} size="small" />
+                  <Text style={styles.templatesLoadingText}>Syncing templates…</Text>
+                </View>
+              ) : dbTemplates.length === 0 ? (
+                <Text style={styles.templatesEmpty}>
+                  No database templates found. Open the app online once so Supabase templates sync to
+                  this device.
+                </Text>
+              ) : (
+                <View style={styles.databaseList}>
+                  {dbTemplates.map(t => (
+                    <Pressable
+                      key={t.id}
+                      style={({ pressed }) => [styles.databaseRow, pressed && styles.cardPressed]}
+                      onPress={() => onCreateDataWithTemplate(t)}
+                    >
+                      <Text style={styles.databaseRowTitle} numberOfLines={2}>
+                        {t.displayName}
+                      </Text>
+                      <Text style={styles.databaseRowHint} numberOfLines={1}>
+                        {t.masterSchemaId}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              <Pressable
+                style={({ pressed }) => [styles.genericDataRow, pressed && styles.cardPressed]}
+                onPress={onCreateGenericDataCollection}
+              >
+                <Text style={styles.genericDataTitle}>Generic data collection</Text>
+                <Text style={styles.genericDataHint}>No database template — unstructured captures</Text>
+              </Pressable>
+            </ScrollView>
+          </>
+        )}
       </Animated.View>
     </>
   );
@@ -208,10 +286,31 @@ function CreateOption({
 
 export default function HomeScreen() {
   const router = useRouter();
+  const db = useSQLiteContext();
   const sheetProgress = useRef(new Animated.Value(0)).current;
   const [projects, setProjects] = useState(() => getMockProjects());
   const [query, setQuery] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [dbTemplates, setDbTemplates] = useState<DatabaseTemplateOption[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    let cancelled = false;
+    setTemplatesLoading(true);
+    void (async () => {
+      try {
+        await syncTemplateCatalogFromSupabase(db);
+        const rows = await listDatabaseTemplateOptions(db);
+        if (!cancelled) setDbTemplates(rows);
+      } finally {
+        if (!cancelled) setTemplatesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isCreateOpen, db]);
 
   useFocusEffect(
     useCallback(() => {
@@ -251,12 +350,29 @@ export default function HomeScreen() {
     router.push(`/project/${id}` as never);
   };
 
-  const handleCreateProject = (type: CreatableProjectType) => {
-    const project = createMockProject(type);
+  const finishCreateAndNavigate = (project: MockProject) => {
     setProjects(getMockProjects());
     setQuery('');
     setIsCreateOpen(false);
     router.push(`/project/${project.id}` as never);
+  };
+
+  const handleCreateChecklist = () => {
+    finishCreateAndNavigate(createMockProject('checklist'));
+  };
+
+  const handleCreateDataWithTemplate = (t: DatabaseTemplateOption) => {
+    finishCreateAndNavigate(
+      createMockProject('data_collection', {
+        masterSchemaId: t.masterSchemaId,
+        title: t.displayName,
+        description: `${t.displayName} — database template`,
+      }),
+    );
+  };
+
+  const handleCreateGenericDataCollection = () => {
+    finishCreateAndNavigate(createMockProject('data_collection'));
   };
 
   return (
@@ -360,7 +476,11 @@ export default function HomeScreen() {
         visible={isCreateOpen}
         progress={sheetProgress}
         onClose={() => setIsCreateOpen(false)}
-        onCreate={handleCreateProject}
+        dbTemplates={dbTemplates}
+        templatesLoading={templatesLoading}
+        onCreateChecklist={handleCreateChecklist}
+        onCreateDataWithTemplate={handleCreateDataWithTemplate}
+        onCreateGenericDataCollection={handleCreateGenericDataCollection}
       />
     </SafeAreaView>
   );
@@ -538,6 +658,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    maxHeight: '88%',
     backgroundColor: Colors.background,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
@@ -556,11 +677,87 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  sheetBackBtn: {
+    paddingVertical: 4,
+    paddingRight: 8,
+  },
+  sheetBackLabel: {
+    ...Type.bodyMedium,
+    color: Colors.orange,
+    fontWeight: '600',
+  },
   sheetTitle: {
     fontSize: 22,
     lineHeight: 28,
     fontWeight: '800',
     color: Colors.textPrimary,
+  },
+  sheetTitleFlex: {
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 4,
+  },
+  databaseScroll: {
+    maxHeight: 360,
+  },
+  databaseScrollContent: {
+    gap: 12,
+    paddingBottom: 8,
+  },
+  templatesLoading: {
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 24,
+  },
+  templatesLoadingText: {
+    ...Type.subhead,
+    color: Colors.textTertiary,
+  },
+  templatesEmpty: {
+    ...Type.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+    paddingVertical: 12,
+  },
+  databaseList: {
+    gap: 10,
+  },
+  databaseRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.backgroundScreen,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...CARD_SHADOW,
+  },
+  databaseRowTitle: {
+    ...Type.headline,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  databaseRowHint: {
+    ...Type.caption,
+    color: Colors.textTertiary,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  genericDataRow: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: Colors.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  genericDataTitle: {
+    ...Type.headline,
+    color: Colors.textPrimary,
+  },
+  genericDataHint: {
+    ...Type.caption,
+    color: Colors.textTertiary,
   },
   createOptions: {
     flexDirection: 'row',

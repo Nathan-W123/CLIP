@@ -8,19 +8,40 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../../src/components/ui/colors';
 import { Type } from '../../src/components/ui/typography';
 import { NoteSection } from '../../src/components/ui';
 import {
+  appendTranscriptionNote,
   findMockProjectById,
   findProjectContent,
+  recordMockCapture,
 } from '../../src/components/mock';
 import { Images } from '../../src/assets/images';
 import type { ChecklistStep, MockProject, ProjectSection } from '../../src/components/mock';
+import { transcribeAudioFile } from '../../src/services/transcribe';
+import { insertCapture } from '../../src/db/capturesRepository';
+import { trySyncCaptures } from '../../src/services/syncCaptures';
+import { applyMasterEnrichmentIfNeeded } from '../../src/core/enrichMasterPayload';
+import { coerceFieldValues } from '../../src/core/masterSchemas';
+import {
+  resolveMasterTableForProject,
+  resolveRecordTemplateAsync,
+} from '../../src/core/recordTemplate';
+import { VoiceParserProvider } from '../../src/voice/VoiceParserProvider';
+import { useVoiceParser } from '../../src/voice/useVoiceParser';
+import { validateRecord } from '../../src/core/validation';
+import { fallbackPayload } from '../../src/core/payloadValidation';
+import type { ClipRecord } from '../../src/core/schemas';
+import type { DatabaseEntryPayload, ParsedPayload } from '../../src/core/payloadValidation';
+import { randomUuid } from '../../src/utils/randomUuid';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +56,61 @@ interface CapturedNote {
 
 type CaptureState = 'idle' | 'recording' | 'parsing';
 
-const USE_MOCK = true;
+/** Same defaults as `app/record.tsx` — WAV on iOS, AAC on Android. */
+function recordingOptions(): Audio.RecordingOptions {
+  return {
+    isMeteringEnabled: true,
+    android: {
+      extension: '.m4a',
+      outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+      audioEncoder: Audio.AndroidAudioEncoder.AAC,
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      bitRate: 128000,
+    },
+    ios: {
+      extension: '.wav',
+      outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+      audioQuality: Audio.IOSAudioQuality.HIGH,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 128000,
+      linearPCMBitDepth: 16,
+      linearPCMIsBigEndian: false,
+      linearPCMIsFloat: false,
+    },
+    web: {
+      mimeType: 'audio/webm',
+      bitsPerSecond: 128000,
+    },
+  };
+}
+
+function clipRecordToCapturedNote(r: ClipRecord): CapturedNote {
+  const raw = r.payload as ParsedPayload | Record<string, unknown> | undefined;
+  let payload: Record<string, string | number | boolean> = {};
+  const maybeDb = raw as { kind?: string; fields?: Record<string, string | number | boolean | null> };
+  if (maybeDb?.kind === 'database_entry' && maybeDb.fields) {
+    for (const [k, v] of Object.entries(maybeDb.fields)) {
+      if (v === null || v === undefined) continue;
+      payload[k] = v as string | number | boolean;
+    }
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        payload[k] = v;
+      }
+    }
+  }
+  return {
+    id: r.id,
+    templateName: r.templateName,
+    payload,
+    rawTranscript: r.rawTranscript,
+    confidenceScore: r.confidenceScore,
+    capturedAt: r.capturedAt,
+  };
+}
 
 // ─── Star badge ───────────────────────────────────────────────────────────────
 
@@ -142,13 +217,23 @@ function NoteCard({ note, onDelete }: { note: CapturedNote; onDelete: () => void
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export default function ProjectDetailScreen() {
+function ProjectDetailScreenInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const db = useSQLiteContext();
+  const { parseTranscript } = useVoiceParser();
 
   const [captureState, setCaptureState] = useState<CaptureState>('idle');
   const [capturedNotes, setCapturedNotes] = useState<CapturedNote[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const recordingRef = useRef<Audio.Recording | null>(null);
+
+  useEffect(() => {
+    return () => {
+      void recordingRef.current?.stopAndUnloadAsync();
+    };
+  }, []);
 
   useEffect(() => {
     if (captureState === 'recording') {
@@ -176,28 +261,116 @@ export default function ProjectDetailScreen() {
     );
   }
 
+  async function startRecording() {
+    setErrorMessage(null);
+    const perm = await Audio.requestPermissionsAsync();
+    if (!perm.granted) {
+      setErrorMessage('Microphone permission is required to capture.');
+      return;
+    }
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { recording } = await Audio.Recording.createAsync(recordingOptions());
+    recordingRef.current = recording;
+    setCaptureState('recording');
+  }
+
+  async function stopRecordingAndTranscribe() {
+    if (!project) {
+      setCaptureState('idle');
+      return;
+    }
+    const p = project;
+
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (!rec) {
+      setCaptureState('idle');
+      return;
+    }
+
+    setCaptureState('parsing');
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      if (!uri) {
+        throw new Error('No recording file.');
+      }
+
+      const isIosWav = Platform.OS === 'ios';
+      const filename = isIosWav ? 'capture.wav' : 'capture.m4a';
+      const mime = isIosWav ? 'audio/wav' : 'audio/mp4';
+
+      const { transcript } = await transcribeAudioFile(uri, filename, mime);
+      const transcriptText = transcript.trim() || '(No speech detected)';
+
+      if (!transcriptText || transcriptText.startsWith('(')) {
+        setCaptureState('idle');
+        return;
+      }
+
+      const tmpl = await resolveRecordTemplateAsync(db, p);
+      if (!tmpl) {
+        setErrorMessage('No template for this project.');
+        setCaptureState('idle');
+        return;
+      }
+
+      const pr = await parseTranscript(transcriptText, tmpl);
+      let payload: ParsedPayload =
+        (pr?.record.payload as ParsedPayload | undefined) ??
+        fallbackPayload(tmpl, transcriptText);
+      payload = applyMasterEnrichmentIfNeeded(tmpl, transcriptText, payload);
+      const masterTable = resolveMasterTableForProject(p);
+      if (masterTable && payload && typeof payload === 'object') {
+        const maybe = payload as {
+          kind?: string;
+          fields?: Record<string, string | number | boolean | null>;
+        };
+        if (maybe.kind === 'database_entry' && maybe.fields) {
+          maybe.fields = coerceFieldValues(masterTable, maybe.fields);
+          payload = maybe as DatabaseEntryPayload;
+        }
+      }
+
+      const record: ClipRecord = {
+        id: randomUuid(),
+        templateId: tmpl.id,
+        templateName: tmpl.name,
+        payload,
+        rawTranscript: transcriptText,
+        confidenceScore: pr?.confidence ?? 0.45,
+        validated: false,
+        synced: false,
+        capturedAt: new Date().toISOString(),
+        masterTable,
+      };
+      record.validated = validateRecord(record).valid;
+      await insertCapture(db, record, 'project_screen', p.id);
+      await trySyncCaptures(db);
+      appendTranscriptionNote(p.id, transcriptText);
+      const firstLine =
+        transcriptText.split('\n').find(l => l.trim())?.trim() ?? transcriptText.slice(0, 80);
+      recordMockCapture(p.id, firstLine);
+      setCapturedNotes(prev => [clipRecordToCapturedNote(record), ...prev]);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCaptureState('idle');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrorMessage(msg);
+      setCaptureState('idle');
+    }
+  }
+
   async function handleCapturePress() {
     if (captureState === 'parsing') return;
-
-    if (USE_MOCK) {
-      if (captureState === 'idle') {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        setCaptureState('recording');
-      } else if (captureState === 'recording') {
-        setCaptureState('parsing');
-        const note: CapturedNote = {
-          id: Math.random().toString(36).slice(2),
-          templateName: 'Field Note',
-          payload: { observation: 'Sample parsed field' },
-          rawTranscript: 'This is a simulated voice note capture.',
-          confidenceScore: 0.92,
-          capturedAt: new Date().toISOString(),
-        };
-        setCapturedNotes((prev: CapturedNote[]) => [note, ...prev]);
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setCaptureState('idle');
-      }
-      return;
+    if (captureState === 'idle') {
+      await startRecording();
+    } else if (captureState === 'recording') {
+      await stopRecordingAndTranscribe();
     }
   }
 
@@ -252,6 +425,10 @@ export default function ProjectDetailScreen() {
           } />
         </View>
         <Text style={styles.typeLabel}>{typeLabel}</Text>
+
+        {errorMessage ? (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        ) : null}
 
         {capturedNotes.length > 0 && (
           <View style={styles.capturedSection}>
@@ -308,6 +485,14 @@ export default function ProjectDetailScreen() {
   );
 }
 
+export default function ProjectDetailScreen() {
+  return (
+    <VoiceParserProvider>
+      <ProjectDetailScreenInner />
+    </VoiceParserProvider>
+  );
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -355,6 +540,12 @@ const styles = StyleSheet.create({
     ...Type.subhead,
     color: Colors.textTertiary,
     marginBottom: 28,
+  },
+  errorText: {
+    ...Type.subhead,
+    color: '#C62828',
+    marginBottom: 16,
+    marginTop: -12,
   },
 
   // Captured notes

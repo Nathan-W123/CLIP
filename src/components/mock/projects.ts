@@ -149,23 +149,35 @@ export function findMockProjectById(id: string): MockProject | undefined {
   return MOCK_PROJECTS.find(project => project.id === id);
 }
 
-export function createMockProject(type: CreatableProjectType): MockProject {
+export function createMockProject(
+  type: CreatableProjectType,
+  options?: {
+    masterSchemaId?: string;
+    title?: string;
+    description?: string;
+  },
+): MockProject {
   createdProjectCount += 1;
   const now = new Date();
   const label = type === 'checklist' ? 'Checklist' : 'Data collection';
+  const defaultTitle = `Untitled ${label.toLowerCase()}`;
   const project: MockProject = {
     id: `proj-created-${now.getTime()}-${createdProjectCount}`,
-    title: `Untitled ${label.toLowerCase()}`,
+    title: options?.title ?? defaultTitle,
     type,
     syncStatus: 'draft',
     lastUsedAt: now.toISOString(),
     updatedAt: 'just now',
     date: formatShortDate(now),
     description:
-      type === 'checklist'
+      options?.description ??
+      (type === 'checklist'
         ? 'New checklist project'
-        : 'New data collection project',
+        : 'New data collection project'),
     recentActivity: [],
+    ...(options?.masterSchemaId
+      ? { masterSchemaId: options.masterSchemaId }
+      : {}),
   };
 
   MOCK_PROJECTS.unshift(project);

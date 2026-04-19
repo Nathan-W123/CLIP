@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { ClipRecord } from '../core/schemas';
 
-export type CaptureSource = 'voice_capture' | 'record_screen';
+export type CaptureSource = 'voice_capture' | 'record_screen' | 'project_screen';
 
 export async function insertCapture(
   db: SQLiteDatabase,

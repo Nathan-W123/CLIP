@@ -14,6 +14,14 @@ export type TemplateSchemaRow = {
   master_schema_id: string | null;
   fields_json: string;
   prompt_hint: string | null;
+  supabase_table?: string | null;
+};
+
+/** Database-entry templates tied to a master schema (includes rows synced from Supabase `template_catalog`). */
+export type DatabaseTemplateOption = {
+  id: string;
+  displayName: string;
+  masterSchemaId: string;
 };
 
 function fieldsToJson(fields: MasterField[]): string {
@@ -69,6 +77,43 @@ export async function getTemplateFromDatabase(
     return rowToTemplate(row);
   } catch {
     return null;
+  }
+}
+
+async function templateSchemasHasColumn(
+  db: SQLiteDatabase,
+  column: string,
+): Promise<boolean> {
+  const rows = await db.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(template_schemas)`,
+  );
+  return rows.some(r => r.name === column);
+}
+
+/** Rows suitable for the Create → Data Collection template picker. */
+export async function listDatabaseTemplateOptions(
+  db: SQLiteDatabase,
+): Promise<DatabaseTemplateOption[]> {
+  try {
+    const rows = await db.getAllAsync<{
+      id: string;
+      display_name: string;
+      master_schema_id: string | null;
+    }>(
+      `SELECT id, display_name, master_schema_id FROM template_schemas
+       WHERE template_kind = 'database_entry'
+         AND master_schema_id IS NOT NULL
+       ORDER BY display_name COLLATE NOCASE`,
+    );
+    return rows
+      .filter((r): r is typeof r & { master_schema_id: string } => !!r.master_schema_id)
+      .map(r => ({
+        id: r.id,
+        displayName: r.display_name,
+        masterSchemaId: r.master_schema_id,
+      }));
+  } catch {
+    return [];
   }
 }
 
@@ -159,5 +204,8 @@ export async function migrateTemplateSchemas(db: SQLiteDatabase): Promise<void> 
     );
     CREATE INDEX IF NOT EXISTS idx_template_schemas_master ON template_schemas(master_schema_id);
   `);
+  if (!(await templateSchemasHasColumn(db, 'supabase_table'))) {
+    await db.execAsync(`ALTER TABLE template_schemas ADD COLUMN supabase_table TEXT`);
+  }
   await seedTemplateSchemas(db);
 }
