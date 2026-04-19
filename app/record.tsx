@@ -306,14 +306,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 16,
     marginBottom: 8,
   },
   projectTitle: {
     ...Type.headline,
     color: Colors.textTertiary,
     paddingHorizontal: 24,
-    marginBottom: 2,
+    marginBottom: 8,
   },
   screenLabel: {
     fontSize: 28,
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     letterSpacing: -0.4,
     paddingHorizontal: 24,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   errorText: {
     ...Type.subhead,
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 24,
+    gap: 32,
     paddingHorizontal: 24,
   },
   pulseRing: {

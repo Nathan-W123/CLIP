@@ -43,15 +43,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
     marginTop: 24,
   },
   rowSection: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
-    marginTop: 28,
+    marginBottom: 16,
+    marginTop: 24,
   },
   labelMicro: {
     ...Type.micro,

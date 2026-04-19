@@ -24,8 +24,8 @@ export function NoteSection({ section }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 28,
-    gap: 12,
+    marginTop: 24,
+    gap: 8,
   },
   title: {
     ...Type.micro,

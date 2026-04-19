@@ -60,8 +60,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 14,
-    gap: 12,
+    paddingVertical: 16,
+    gap: 8,
   },
   pressed: {
     opacity: 0.6,
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    gap: 3,
+    gap: 8,
   },
   top: {
     flexDirection: 'row',
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
   meta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    gap: 8,
+    marginTop: 8,
   },
   metaText: {
     ...Type.caption,

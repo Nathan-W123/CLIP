@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 16,
     marginBottom: 8,
   },
   pressed: {
@@ -124,13 +124,13 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     color: Colors.textPrimary,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   hint: {
     fontSize: 14,
     color: Colors.textTertiary,
     lineHeight: 20,
-    marginBottom: 40,
+    marginBottom: 32,
   },
   captureArea: {
     flex: 1,

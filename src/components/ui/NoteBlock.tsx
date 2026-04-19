@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   // Note block
   noteRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   noteLeft: {
     alignItems: 'center',
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
   noteContent: {
     flex: 1,
     paddingBottom: 16,
-    gap: 3,
+    gap: 8,
   },
   noteTimestamp: {
     ...Type.caption,
@@ -142,12 +142,12 @@ const styles = StyleSheet.create({
 
   // Entry list
   entryList: {
-    gap: 10,
+    gap: 8,
   },
   entryRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 8,
   },
   entryBubble: {
     width: 18,
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
 
   // Fields
   fieldList: {
-    gap: 6,
+    gap: 8,
   },
   fieldRow: {
     flexDirection: 'row',

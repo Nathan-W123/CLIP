@@ -32,8 +32,8 @@ export function PrimaryButton({ label, onPress, disabled = false, loading = fals
 
 const styles = StyleSheet.create({
   btn: {
-    height: 52,
-    borderRadius: 14,
+    height: 48,
+    borderRadius: 16,
     backgroundColor: Colors.orange,
     alignItems: 'center',
     justifyContent: 'center',

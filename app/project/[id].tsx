@@ -194,7 +194,7 @@ function NoteCard({ note, onDelete }: { note: CapturedNote; onDelete: () => void
   const deleteOpacity = translateX.interpolate({ inputRange: [-DELETE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: 'clamp' });
 
   return (
-    <View style={{ overflow: 'hidden', borderRadius: 12 }}>
+    <View style={{ overflow: 'hidden', borderRadius: 8 }}>
       <Animated.View style={[styles.deleteAction, { opacity: deleteOpacity }]}>
         <Text style={styles.deleteLabel}>Delete</Text>
       </Animated.View>
@@ -479,56 +479,56 @@ export default function ProjectDetailScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.backgroundScreen },
   scroll: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 120 },
-  topIcon: { marginTop: 12, marginBottom: 16 },
-  backBtn: { marginBottom: 12, alignSelf: 'flex-start' },
+  topIcon: { marginTop: 16, marginBottom: 16 },
+  backBtn: { marginBottom: 16, alignSelf: 'flex-start' },
   backBtnPressed: { opacity: 0.5 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary, letterSpacing: -0.4, lineHeight: 34 },
   starBadge: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  typeLabel: { ...Type.subhead, color: Colors.textTertiary, marginBottom: 28 },
-  errorText: { ...Type.subhead, color: '#C62828', marginBottom: 16, marginTop: -12 },
+  typeLabel: { ...Type.subhead, color: Colors.textTertiary, marginBottom: 24 },
+  errorText: { ...Type.subhead, color: '#C62828', marginBottom: 16, marginTop: -8 },
 
   // Captured notes
-  capturedSection: { marginBottom: 8, gap: 10 },
-  capturedDivider: { height: 1, backgroundColor: Colors.borderSubtle, marginTop: 8, marginBottom: 20 },
+  capturedSection: { marginBottom: 8, gap: 8 },
+  capturedDivider: { height: 1, backgroundColor: Colors.borderSubtle, marginTop: 8, marginBottom: 24 },
   noteCard: {
     backgroundColor: Colors.surfaceElevated,
-    borderRadius: 12,
-    padding: 14,
-    gap: 4,
+    borderRadius: 8,
+    padding: 16,
+    gap: 8,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
   },
-  noteCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  noteCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   noteTemplateName: { ...Type.bodyMedium, color: Colors.textPrimary, fontWeight: '600' },
   noteTime: { ...Type.caption, color: Colors.textTertiary },
   noteTranscript: { ...Type.body, color: Colors.textPrimary, lineHeight: 22 },
-  noteField: { ...Type.caption, color: Colors.textSecondary, marginTop: 2 },
+  noteField: { ...Type.caption, color: Colors.textSecondary, marginTop: 8 },
   deleteAction: {
     position: 'absolute', top: 0, bottom: 0, right: 0,
     width: DELETE_THRESHOLD,
     backgroundColor: '#E53E3E',
-    justifyContent: 'center', alignItems: 'center', borderRadius: 12,
+    justifyContent: 'center', alignItems: 'center', borderRadius: 8,
   },
   deleteLabel: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
 
   // Step blocks
   stepsContainer: { gap: 0 },
   stepDivider: { height: 32 },
-  stepBlock: { gap: 10 },
+  stepBlock: { gap: 8 },
   stepHeader: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary, letterSpacing: -0.2, lineHeight: 26 },
   stepBody: { ...Type.body, color: Colors.textPrimary, lineHeight: 24 },
-  entriesBlock: { gap: 3, marginTop: 2 },
+  entriesBlock: { gap: 8, marginTop: 8 },
   entryLine: { ...Type.body, color: Colors.textPrimary, lineHeight: 24 },
   sectionsContainer: { gap: 0 },
   notFound: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   notFoundText: { ...Type.body, color: Colors.textTertiary },
 
   // Capture bar
-  bottomSpacer: { height: 20 },
+  bottomSpacer: { height: 24 },
   captureBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    alignItems: 'center', paddingBottom: 36, paddingTop: 12,
+    alignItems: 'center', paddingBottom: 32, paddingTop: 16,
     backgroundColor: Colors.backgroundScreen,
   },
   captureBtn: {

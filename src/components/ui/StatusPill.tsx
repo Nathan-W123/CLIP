@@ -41,10 +41,10 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 16,
     alignSelf: 'flex-start',
   },
   dot: {

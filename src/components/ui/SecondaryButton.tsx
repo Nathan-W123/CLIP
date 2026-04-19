@@ -27,8 +27,8 @@ export function SecondaryButton({ label, onPress, disabled = false }: Props) {
 
 const styles = StyleSheet.create({
   btn: {
-    height: 52,
-    borderRadius: 14,
+    height: 48,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: Colors.border,
     alignItems: 'center',

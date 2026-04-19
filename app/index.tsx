@@ -279,7 +279,9 @@ function CreateOption({
       <Text style={styles.createOptionLabel} numberOfLines={1}>
         {label}
       </Text>
-      <Image source={imageSource} style={styles.createOptionImage} resizeMode="contain" />
+      <View style={styles.createOptionImageWrap}>
+        <Image source={imageSource} style={styles.createOptionImage} resizeMode="contain" />
+      </View>
     </Pressable>
   );
 }
@@ -505,9 +507,9 @@ const styles = StyleSheet.create({
   },
   pageHeader: {
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 16,
     gap: 8,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   pageHeaderRow: {
     flexDirection: 'row',
@@ -528,10 +530,10 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   section: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   projectStack: {
-    gap: 10,
+    gap: 8,
   },
   cardPressed: {
     opacity: 0.72,
@@ -539,23 +541,23 @@ const styles = StyleSheet.create({
   featuredCard: {
     backgroundColor: Colors.background,
     borderRadius: 8,
-    padding: 14,
-    gap: 12,
+    padding: 16,
+    gap: 8,
     ...CARD_SHADOW,
   },
   projectRow: {
     backgroundColor: Colors.background,
     borderRadius: 8,
-    padding: 14,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     ...CARD_SHADOW,
   },
   projectHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 8,
   },
   projectMeta: {
     flex: 1,
@@ -571,20 +573,20 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   activityList: {
-    gap: 7,
+    gap: 8,
   },
   activityRow: {
     backgroundColor: Colors.backgroundScreen,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   activityText: {
     ...Type.subhead,
     color: Colors.textSecondary,
   },
   bottomSpacer: {
-    height: 20,
+    height: 24,
   },
   bottomBar: {
     position: 'absolute',
@@ -593,9 +595,9 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingTop: 16,
     paddingBottom: 32,
     backgroundColor: Colors.backgroundScreen,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -603,8 +605,8 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     flex: 1,
-    height: 50,
-    borderRadius: 25,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 1.5,
     borderColor: Colors.searchBlue,
     flexDirection: 'row',
@@ -614,10 +616,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   searchIconBubble: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.searchBlue,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -628,13 +626,13 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   createBtn: {
-    height: 50,
-    borderRadius: 25,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.orange,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 22,
-    gap: 7,
+    paddingHorizontal: 24,
+    gap: 8,
   },
   createBtnPressed: {
     backgroundColor: Colors.orangeDark,
@@ -663,9 +661,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 30,
-    gap: 18,
+    paddingTop: 16,
+    paddingBottom: 32,
+    gap: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
@@ -678,7 +676,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sheetBackBtn: {
-    paddingVertical: 4,
+    paddingVertical: 8,
     paddingRight: 8,
   },
   sheetBackLabel: {
@@ -695,18 +693,18 @@ const styles = StyleSheet.create({
   sheetTitleFlex: {
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 8,
   },
   databaseScroll: {
     maxHeight: 360,
   },
   databaseScrollContent: {
-    gap: 12,
+    gap: 8,
     paddingBottom: 8,
   },
   templatesLoading: {
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingVertical: 24,
   },
   templatesLoadingText: {
@@ -717,18 +715,18 @@ const styles = StyleSheet.create({
     ...Type.body,
     color: Colors.textSecondary,
     lineHeight: 22,
-    paddingVertical: 12,
+    paddingVertical: 16,
   },
   databaseList: {
-    gap: 10,
+    gap: 8,
   },
   databaseRow: {
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.borderSubtle,
     backgroundColor: Colors.backgroundScreen,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     ...CARD_SHADOW,
   },
   databaseRowTitle: {
@@ -747,9 +745,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: Colors.borderSubtle,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 8,
   },
   genericDataTitle: {
     ...Type.headline,
@@ -761,7 +759,7 @@ const styles = StyleSheet.create({
   },
   createOptions: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   createOption: {
     flex: 1,
@@ -771,18 +769,23 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSubtle,
     backgroundColor: Colors.background,
     overflow: 'hidden',
-    padding: 14,
+    padding: 16,
+    alignItems: 'center',
     ...CARD_SHADOW,
   },
   createOptionLabel: {
     ...Type.headline,
     color: Colors.textPrimary,
+    alignSelf: 'flex-start',
+  },
+  createOptionImageWrap: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   createOptionImage: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 150,
-    height: 150,
+    width: 118,
+    height: 118,
   },
 });

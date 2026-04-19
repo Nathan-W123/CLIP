@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 16,
     marginBottom: 8,
   },
   // Page title
@@ -91,15 +91,15 @@ const styles = StyleSheet.create({
 
   // Cards list
   scroll: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingBottom: 40,
-    gap: 10,
+    gap: 8,
   },
   card: {
     backgroundColor: Colors.background,
     borderRadius: 16,
     padding: 16,
-    gap: 5,
+    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.07,
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
   },
   cardProject: {
     ...Type.headline,
