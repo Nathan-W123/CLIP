@@ -163,8 +163,10 @@ function CreateProjectSheet({
         pointerEvents={visible ? 'auto' : 'none'}
         style={[styles.createSheet, { transform: [{ translateY }] }]}
       >
-        <View style={styles.sheetHandle} />
-        <Text style={styles.sheetTitle}>Create Project</Text>
+        <View style={styles.sheetTitleRow}>
+          <Text style={styles.sheetTitle}>Create Project</Text>
+          <Image source={Images.clipLogo} style={{ width: 32, height: 34 }} resizeMode="contain" />
+        </View>
         <View style={styles.createOptions}>
           <CreateOption
             label="Checklist"
@@ -549,12 +551,10 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#D8D8D8',
+  sheetTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sheetTitle: {
     fontSize: 22,
