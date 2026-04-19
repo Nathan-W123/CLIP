@@ -31,5 +31,10 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ],
+  "exclude": [
+    "cactus",
+    "backend",
+    "node_modules"
+  ],
   "extends": "expo/tsconfig.base"
 }

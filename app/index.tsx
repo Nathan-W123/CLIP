@@ -22,7 +22,8 @@ import {
   groupProjectsByLastUsed,
   sortProjectsByLastUsed,
 } from '../src/components/mock';
-import { Images } from './images/assets';
+import { Images } from '../src/assets/images';
+import { SyncStatus } from '../src/components/SyncStatus';
 import type { MockProject, ProjectType } from '../src/components/mock';
 
 type CreatableProjectType = Extract<ProjectType, 'checklist' | 'data_collection'>;
@@ -265,7 +266,7 @@ export default function HomeScreen() {
       >
         <View style={styles.pageHeader}>
           <View style={styles.pageHeaderRow}>
-            <Images.ClipLogo width={28} height={30} />
+            <Image source={Images.clipLogo} style={{ width: 28, height: 30 }} resizeMode="contain" />
             <Pressable
               onPress={() => router.push('/history' as never)}
               hitSlop={8}
@@ -274,6 +275,7 @@ export default function HomeScreen() {
               <Text style={styles.historyLink}>History</Text>
             </Pressable>
           </View>
+          <SyncStatus />
           <Text style={styles.pageTitle}>Projects</Text>
         </View>
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, TextInput, Text, Pressable, StyleSheet } from 'react-native';
 import { Colors } from './colors';
 import { Type } from './typography';
-import { Images } from '../../../app/images/assets';
+import { Images } from '../../assets/images';
 
 interface Props {
   value: string;

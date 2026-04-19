@@ -1,21 +1,24 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   Pressable,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../../src/components/ui/colors';
 import { Type } from '../../src/components/ui/typography';
 import { NoteSection } from '../../src/components/ui';
 import {
   findMockProjectById,
   findProjectContent,
+  getVoiceCaptureSection,
 } from '../../src/components/mock';
-import { Images } from '../images/assets';
+import { Images } from '../../src/assets/images';
 import type { ChecklistStep, MockProject, ProjectSection } from '../../src/components/mock';
 
 // ─── Star badge ───────────────────────────────────────────────────────────────
@@ -75,8 +78,17 @@ function EmptyProjectNotes({ project }: { project: MockProject }) {
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const [noteRefresh, setNoteRefresh] = useState(0);
 
   const project = id ? findMockProjectById(id) : undefined;
+
+  useFocusEffect(
+    useCallback(() => {
+      setNoteRefresh(n => n + 1);
+    }, []),
+  );
+
+  void noteRefresh;
 
   if (!project) {
     return (
@@ -102,6 +114,10 @@ export default function ProjectDetailScreen() {
   const pageContent =
     completedSteps.length === 0 ? findProjectContent(project.id) : null;
 
+  const voiceSection: ProjectSection | null = getVoiceCaptureSection(
+    project.id,
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView
@@ -110,7 +126,7 @@ export default function ProjectDetailScreen() {
       >
         {/* Clipboard icon top-left */}
         <View style={styles.topIcon}>
-          <Images.ClipLogo width={30} height={32} />
+          <Image source={Images.clipLogo} style={{ width: 30, height: 32 }} resizeMode="contain" />
         </View>
 
         {/* Back arrow */}
@@ -148,11 +164,17 @@ export default function ProjectDetailScreen() {
               <NoteSection key={section.id} section={section} />
             ))}
           </View>
-        ) : (
+        ) : !voiceSection ? (
           <View style={styles.sectionsContainer}>
             <EmptyProjectNotes project={project} />
           </View>
-        )}
+        ) : null}
+
+        {voiceSection ? (
+          <View style={styles.sectionsContainer}>
+            <NoteSection section={voiceSection} />
+          </View>
+        ) : null}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>

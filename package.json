@@ -13,6 +13,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",
     "@react-native-community/netinfo": "^11.4.1",
+    "@react-navigation/native": "^7.2.2",
     "@supabase/supabase-js": "^2.103.3",
     "cactus-react-native": "^1.12.0",
     "dotenv": "^17.4.2",

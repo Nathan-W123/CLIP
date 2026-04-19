@@ -28,6 +28,10 @@ export {
 export { MOCK_TEMPLATES } from './templates';
 export { MOCK_HISTORY, findProjectContent } from './projectContent';
 export {
+  appendTranscriptionNote,
+  getVoiceCaptureSection,
+} from './transcriptionNotes';
+export {
   formatProjectSubtitle,
   formatStepProgress,
   formatStepHeader,

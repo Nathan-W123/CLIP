@@ -1,31 +1,30 @@
-// Push-to-activate voice capture component.
-// Press once → recording. Press again → stops, parses, shows ParsedPreview.
-// On confirm: validates + writes to SQLite → sync queue queued.
+// Push-to-activate voice capture. Stop → STT + parse → SQLite + Supabase (no review step).
 
 import React, { useState, useCallback } from 'react';
 import { View, Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
 import * as Haptics from 'expo-haptics';
 import { useVoiceParser } from '../voice/useVoiceParser';
 import { startRecording, stopRecording, requestMicPermission, type ActiveRecording } from '../voice/audio';
-import { insertRecord } from '../core/sqlite.expo';
+import { insertCapture } from '../db/capturesRepository';
+import { trySyncCaptures } from '../services/syncCaptures';
 import { validateRecord } from '../core/validation';
-import { ParsedPreview } from './ParsedPreview';
-import { Images } from '../../app/images/assets';
+import { Images } from '../assets/images';
 import type { Template, ClipRecord } from '../core/schemas';
-import type { ParseResult } from '../voice/cactus';
+import { randomUuid } from '../utils/randomUuid';
 
 interface Props {
   template: Template;
   onSaved?: (record: ClipRecord) => void;
 }
 
-type CaptureState = 'idle' | 'recording' | 'parsing' | 'review' | 'saving';
+type CaptureState = 'idle' | 'recording' | 'parsing' | 'saving';
 
 export function VoiceCapture({ template, onSaved }: Props) {
+  const db = useSQLiteContext();
   const { isReady, isLoading, downloadProgress, parseVoice, error: modelError } = useVoiceParser();
   const [captureState, setCaptureState] = useState<CaptureState>('idle');
   const [activeRecording, setActiveRecording] = useState<ActiveRecording | null>(null);
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handlePress = useCallback(async () => {
@@ -61,45 +60,31 @@ export function VoiceCapture({ template, onSaved }: Props) {
           setCaptureState('idle');
           return;
         }
-        setParseResult(result);
-        setCaptureState('review');
+
+        setCaptureState('saving');
+        const record: ClipRecord = {
+          id: randomUuid(),
+          templateId: result.record.templateId,
+          templateName: result.record.templateName,
+          payload: result.record.payload,
+          rawTranscript: result.record.rawTranscript,
+          confidenceScore: result.confidence,
+          validated: false,
+          synced: false,
+          capturedAt: new Date().toISOString(),
+        };
+        record.validated = validateRecord(record).valid;
+        await insertCapture(db, record, 'voice_capture', null);
+        await trySyncCaptures(db);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setCaptureState('idle');
+        onSaved?.(record);
       } catch (e) {
-        setErrorMsg(`Parse failed: ${e instanceof Error ? e.message : String(e)}`);
+        setErrorMsg(`Capture failed: ${e instanceof Error ? e.message : String(e)}`);
         setCaptureState('idle');
       }
     }
-  }, [captureState, activeRecording, parseVoice, template]);
-
-  const handleConfirm = useCallback(async () => {
-    if (!parseResult) return;
-    setCaptureState('saving');
-
-    const record: ClipRecord = {
-      id: crypto.randomUUID(),
-      templateId: parseResult.record.templateId,
-      templateName: parseResult.record.templateName,
-      payload: parseResult.record.payload,
-      rawTranscript: parseResult.record.rawTranscript,
-      confidenceScore: parseResult.confidence,
-      validated: false,
-      synced: false,
-      capturedAt: new Date().toISOString(),
-    };
-
-    const validation = validateRecord(record);
-    record.validated = validation.valid;
-
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    insertRecord(record);
-    setParseResult(null);
-    setCaptureState('idle');
-    onSaved?.(record);
-  }, [parseResult, onSaved]);
-
-  const handleDiscard = useCallback(() => {
-    setParseResult(null);
-    setCaptureState('idle');
-  }, []);
+  }, [captureState, activeRecording, db, onSaved, parseVoice, template]);
 
   if (isLoading) {
     return (
@@ -121,28 +106,19 @@ export function VoiceCapture({ template, onSaved }: Props) {
     );
   }
 
-  if (captureState === 'review' && parseResult) {
-    return (
-      <ParsedPreview
-        result={parseResult}
-        template={template}
-        onConfirm={handleConfirm}
-        onDiscard={handleDiscard}
-      />
-    );
-  }
-
   const isRecording = captureState === 'recording';
   const isParsing = captureState === 'parsing';
+  const isSaving = captureState === 'saving';
+  const isBusy = isParsing || isSaving;
 
   return (
     <View style={styles.container}>
       <Pressable
         style={[styles.button, isRecording && styles.buttonRecording]}
         onPress={handlePress}
-        disabled={isParsing || captureState === 'saving'}
+        disabled={isBusy}
       >
-        {isParsing ? (
+        {isBusy ? (
           <ActivityIndicator color="#fff" size="large" />
         ) : isRecording ? (
           <View style={styles.dotRecording} />
@@ -152,7 +128,13 @@ export function VoiceCapture({ template, onSaved }: Props) {
       </Pressable>
 
       <Text style={styles.label}>
-        {isParsing ? 'Parsing…' : isRecording ? 'Recording — tap to stop' : 'Tap to record'}
+        {isSaving
+          ? 'Saving…'
+          : isParsing
+            ? 'Transcribing & parsing…'
+            : isRecording
+              ? 'Recording — tap to stop'
+              : 'Tap to record'}
       </Text>
 
       {errorMsg && <Text style={styles.error}>{errorMsg}</Text>}

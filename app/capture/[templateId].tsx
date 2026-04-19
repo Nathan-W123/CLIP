@@ -2,12 +2,13 @@
 // Navigates back to home after a successful save.
 
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getTemplateById } from '../../src/core/sqlite.expo';
+import { VoiceParserProvider } from '../../src/voice/VoiceParserProvider';
 import { VoiceCapture } from '../../src/components/VoiceCapture';
-import { Images } from '../images/assets';
+import { Images } from '../../src/assets/images';
 import type { Template, ClipRecord } from '../../src/core/schemas';
 
 export default function CaptureScreen() {
@@ -36,20 +37,22 @@ export default function CaptureScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <Header onBack={() => router.back()} />
-      <View style={styles.container}>
-        <Text style={styles.title}>{template.name}</Text>
-        <Text style={styles.hint}>
-          {template.type === 'checklist'
-            ? 'Speak each step aloud. Say "confirmed" or describe any notes.'
-            : 'Describe the data you want to capture. Be specific.'}
-        </Text>
-        <View style={styles.captureArea}>
-          <VoiceCapture template={template} onSaved={handleSaved} />
+    <VoiceParserProvider>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <Header onBack={() => router.back()} />
+        <View style={styles.container}>
+          <Text style={styles.title}>{template.name}</Text>
+          <Text style={styles.hint}>
+            {template.type === 'checklist'
+              ? 'Speak each step aloud. Say "confirmed" or describe any notes.'
+              : 'Describe the data you want to capture. Be specific.'}
+          </Text>
+          <View style={styles.captureArea}>
+            <VoiceCapture template={template} onSaved={handleSaved} />
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </VoiceParserProvider>
   );
 }
 
@@ -63,7 +66,7 @@ function Header({ onBack }: { onBack: () => void }) {
       >
         <Images.BackIcon width={22} height={18} />
       </Pressable>
-      <Images.ClipLogo width={26} height={28} />
+      <Image source={Images.clipLogo} style={{ width: 26, height: 28 }} resizeMode="contain" />
     </View>
   );
 }

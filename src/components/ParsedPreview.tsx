@@ -17,6 +17,12 @@ export function ParsedPreview({ result, template, onConfirm, onDiscard }: Props)
   const { record, confidence, latencyMs } = result;
   const confidencePct = Math.round(confidence * 100);
   const isLowConfidence = confidence < 0.7;
+  const payloadForDisplay: Record<string, unknown> =
+    record.payload !== null &&
+    typeof record.payload === 'object' &&
+    !Array.isArray(record.payload)
+      ? (record.payload as Record<string, unknown>)
+      : { value: String(record.payload) };
 
   const fieldLabels: Record<string, string> =
     template.type === 'database_entry'
@@ -45,10 +51,14 @@ export function ParsedPreview({ result, template, onConfirm, onDiscard }: Props)
       )}
 
       <ScrollView style={styles.fields} contentContainerStyle={styles.fieldsInner}>
-        {Object.entries(record.payload).map(([key, value]) => (
+        {Object.entries(payloadForDisplay).map(([key, value]) => (
           <View key={key} style={styles.row}>
             <Text style={styles.fieldKey}>{fieldLabels[key] ?? key}</Text>
-            <Text style={styles.fieldValue}>{String(value)}</Text>
+            <Text style={styles.fieldValue}>
+              {typeof value === 'object' && value !== null
+                ? JSON.stringify(value)
+                : String(value)}
+            </Text>
           </View>
         ))}
       </ScrollView>

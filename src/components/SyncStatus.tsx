@@ -2,17 +2,29 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { getPendingSyncItems } from '../core/sqlite.expo';
+import { useSQLiteContext } from 'expo-sqlite';
+import { countPendingSync } from '../db/capturesRepository';
+import { trySyncCaptures } from '../services/syncCaptures';
 
 export function SyncStatus() {
+  const db = useSQLiteContext();
   const [pending, setPending] = useState(0);
 
   useEffect(() => {
-    const check = () => setPending(getPendingSyncItems().length);
-    check();
-    const id = setInterval(check, 5000);
+    const refresh = async () => {
+      try {
+        await trySyncCaptures(db);
+      } finally {
+        const n = await countPendingSync(db);
+        setPending(n);
+      }
+    };
+    void refresh();
+    const id = setInterval(() => {
+      void refresh();
+    }, 8000);
     return () => clearInterval(id);
-  }, []);
+  }, [db]);
 
   if (pending === 0) return null;
 

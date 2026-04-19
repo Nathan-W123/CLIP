@@ -2,38 +2,98 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   Animated,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { Colors } from '../src/components/ui/colors';
 import { Type } from '../src/components/ui/typography';
 import {
   findProjectById,
   MOCK_PROJECTS,
   recordMockCapture,
+  appendTranscriptionNote,
 } from '../src/components/mock';
-import { Images } from './images/assets';
+import type { ProjectType } from '../src/components/mock';
+import { transcribeAudioFile } from '../src/services/transcribe';
+import { Images } from '../src/assets/images';
+import { insertCapture } from '../src/db/capturesRepository';
+import { trySyncCaptures } from '../src/services/syncCaptures';
+import { getTemplateById } from '../src/core/templates';
+import { VoiceParserProvider } from '../src/voice/VoiceParserProvider';
+import { useVoiceParser } from '../src/voice/useVoiceParser';
+import { validateRecord } from '../src/core/validation';
+import { fallbackPayload } from '../src/core/payloadValidation';
+import type { ClipRecord } from '../src/core/schemas';
+import { randomUuid } from '../src/utils/randomUuid';
 
-type CaptureState = 'idle' | 'listening' | 'preview';
+type CaptureState = 'idle' | 'listening' | 'processing';
 
-const MOCK_PARSED_TEXT =
-  'pH: 8.1\nSalinity: 35 ppt\nTemperature: 26.4°C\nVisibility: 8m\nNotes: Probe calibrated. Survey conditions good.';
+const MIC_SIZE = 80;
 
-// ─── Screen ──────────────────────────────────────────────────────────────────
+function templateIdForProjectType(t: ProjectType): string {
+  if (t === 'checklist') return 'tmpl-checklist';
+  if (t === 'data_collection') return 'tmpl-data-collection';
+  return 'tmpl-notes';
+}
 
-export default function RecordScreen() {
+/** iOS: linear PCM WAV @ 16 kHz (backend-native). Android: AAC m4a → server ffmpeg if installed. */
+function recordingOptions(): Audio.RecordingOptions {
+  return {
+    isMeteringEnabled: true,
+    android: {
+      extension: '.m4a',
+      outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+      audioEncoder: Audio.AndroidAudioEncoder.AAC,
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      bitRate: 128000,
+    },
+    ios: {
+      extension: '.wav',
+      outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+      audioQuality: Audio.IOSAudioQuality.HIGH,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 128000,
+      linearPCMBitDepth: 16,
+      linearPCMIsBigEndian: false,
+      linearPCMIsFloat: false,
+    },
+    web: {
+      mimeType: 'audio/webm',
+      bitsPerSecond: 128000,
+    },
+  };
+}
+
+function RecordScreenInner() {
   const params = useLocalSearchParams<{ projectId?: string }>();
   const projectId = params.projectId;
   const router = useRouter();
+  const db = useSQLiteContext();
+  const { parseTranscript } = useVoiceParser();
 
   const [captureState, setCaptureState] = useState<CaptureState>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const project = projectId ? findProjectById(MOCK_PROJECTS, projectId) : null;
+
+  useEffect(() => {
+    return () => {
+      void recordingRef.current?.stopAndUnloadAsync();
+    };
+  }, []);
 
   useEffect(() => {
     if (captureState !== 'listening') {
@@ -58,35 +118,106 @@ export default function RecordScreen() {
     return () => pulse.stop();
   }, [captureState, pulseAnim]);
 
-  function handleMicPress() {
+  async function startRecording() {
+    setErrorMessage(null);
+    const perm = await Audio.requestPermissionsAsync();
+    if (!perm.granted) {
+      setErrorMessage('Microphone permission is required to capture.');
+      return;
+    }
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    const { recording } = await Audio.Recording.createAsync(recordingOptions());
+    recordingRef.current = recording;
+    setCaptureState('listening');
+  }
+
+  async function stopRecordingAndTranscribe() {
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (!rec) {
+      setCaptureState('idle');
+      return;
+    }
+
+    setCaptureState('processing');
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      if (!uri) {
+        throw new Error('No recording file.');
+      }
+
+      const isIosWav = Platform.OS === 'ios';
+      const filename = isIosWav ? 'capture.wav' : 'capture.m4a';
+      const mime = isIosWav ? 'audio/wav' : 'audio/mp4';
+
+      const { transcript } = await transcribeAudioFile(uri, filename, mime);
+      const transcriptText = transcript.trim() || '(No speech detected)';
+
+      if (!projectId || !transcriptText || transcriptText.startsWith('(')) {
+        router.back();
+        return;
+      }
+      if (!project) {
+        setErrorMessage('Project not found.');
+        setCaptureState('idle');
+        return;
+      }
+      const tmpl = getTemplateById(templateIdForProjectType(project.type));
+      if (!tmpl) {
+        setErrorMessage('No template for this project.');
+        setCaptureState('idle');
+        return;
+      }
+
+      const pr = await parseTranscript(transcriptText, tmpl);
+      const record: ClipRecord = {
+        id: randomUuid(),
+        templateId: tmpl.id,
+        templateName: tmpl.name,
+        payload: pr?.record.payload ?? fallbackPayload(tmpl, transcriptText),
+        rawTranscript: transcriptText,
+        confidenceScore: pr?.confidence ?? 0.45,
+        validated: false,
+        synced: false,
+        capturedAt: new Date().toISOString(),
+      };
+      record.validated = validateRecord(record).valid;
+      await insertCapture(db, record, 'record_screen', projectId);
+      await trySyncCaptures(db);
+      appendTranscriptionNote(projectId, transcriptText);
+      const firstLine =
+        transcriptText.split('\n').find(l => l.trim())?.trim() ?? transcriptText.slice(0, 80);
+      recordMockCapture(projectId, firstLine);
+      router.back();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrorMessage(msg);
+      setCaptureState('idle');
+    }
+  }
+
+  async function handleMicPress() {
     if (captureState === 'idle') {
-      setCaptureState('listening');
+      await startRecording();
     } else if (captureState === 'listening') {
-      setCaptureState('preview');
+      await stopRecordingAndTranscribe();
     }
-  }
-
-  function handleConfirm() {
-    if (projectId) {
-      recordMockCapture(projectId, MOCK_PARSED_TEXT.split('\n')[0]);
-    }
-    router.back();
-  }
-
-  function handleDiscard() {
-    setCaptureState('idle');
   }
 
   const screenLabelText =
     captureState === 'idle'
       ? 'Capture'
       : captureState === 'listening'
-      ? 'Listening…'
-      : 'Review';
+        ? 'Listening…'
+        : 'Saving…';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
@@ -97,7 +228,7 @@ export default function RecordScreen() {
         >
           <Images.BackIcon width={22} height={18} />
         </Pressable>
-        <Images.ClipLogo width={26} height={28} />
+        <Image source={Images.clipLogo} style={{ width: 26, height: 28 }} resizeMode="contain" />
       </View>
 
       {project ? (
@@ -105,45 +236,19 @@ export default function RecordScreen() {
       ) : null}
       <Text style={styles.screenLabel}>{screenLabelText}</Text>
 
-      {/* Preview state */}
-      {captureState === 'preview' ? (
-        <ScrollView
-          contentContainerStyle={styles.previewScroll}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.previewCard}>
-            <Text style={styles.previewCardLabel}>Captured note</Text>
-            <Text style={styles.previewText}>{MOCK_PARSED_TEXT}</Text>
-          </View>
-          <View style={styles.previewActions}>
-            <Pressable
-              style={({ pressed }: { pressed: boolean }) => [
-                styles.confirmBtn,
-                pressed && styles.confirmBtnPressed,
-              ]}
-              onPress={handleConfirm}
-            >
-              <Text style={styles.confirmLabel}>Confirm</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }: { pressed: boolean }) => [
-                styles.discardBtn,
-                pressed && styles.discardBtnPressed,
-              ]}
-              onPress={handleDiscard}
-            >
-              <Text style={styles.discardLabel}>Discard</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-      ) : (
-        /* Idle / listening state */
-        <View style={styles.captureCenter}>
-          {captureState === 'listening' ? (
-            <Animated.View
-              style={[styles.pulseRing, { transform: [{ scale: pulseAnim }] }]}
-            />
-          ) : null}
+      {errorMessage ? (
+        <Text style={styles.errorText}>{errorMessage}</Text>
+      ) : null}
+
+      <View style={styles.captureCenter}>
+        {captureState === 'listening' ? (
+          <Animated.View
+            style={[styles.pulseRing, { transform: [{ scale: pulseAnim }] }]}
+          />
+        ) : null}
+        {captureState === 'processing' ? (
+          <ActivityIndicator size="large" color={Colors.orange} />
+        ) : (
           <Pressable
             style={({ pressed }: { pressed: boolean }) => [
               styles.micBtn,
@@ -154,18 +259,30 @@ export default function RecordScreen() {
           >
             <Images.MicIcon width={28} height={35} />
           </Pressable>
-          <Text style={styles.captureHint}>
-            {captureState === 'idle' ? 'Tap to capture' : 'Tap to stop'}
-          </Text>
-        </View>
-      )}
+        )}
+        <Text style={styles.captureHint}>
+          {captureState === 'idle'
+            ? 'Tap to capture'
+            : captureState === 'listening'
+              ? 'Tap to stop'
+              : 'Transcribing & saving…'}
+        </Text>
+        <Text style={styles.apiHint}>
+          Server:{' '}
+          {process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8000'}
+        </Text>
+      </View>
     </SafeAreaView>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
-const MIC_SIZE = 80;
+export default function RecordScreen() {
+  return (
+    <VoiceParserProvider>
+      <RecordScreenInner />
+    </VoiceParserProvider>
+  );
+}
 
 const styles = StyleSheet.create({
   safe: {
@@ -175,8 +292,6 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.5,
   },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -185,7 +300,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     marginBottom: 8,
   },
-  // Project / screen labels
   projectTitle: {
     ...Type.headline,
     color: Colors.textTertiary,
@@ -200,13 +314,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 12,
   },
-
-  // Idle / listening center
+  errorText: {
+    ...Type.subhead,
+    color: '#C62828',
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
   captureCenter: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 24,
+    paddingHorizontal: 24,
   },
   pulseRing: {
     position: 'absolute',
@@ -233,70 +352,12 @@ const styles = StyleSheet.create({
   captureHint: {
     ...Type.subhead,
     color: Colors.textTertiary,
+    textAlign: 'center',
   },
-
-  // Preview state
-  previewScroll: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 20,
-  },
-  previewCard: {
-    backgroundColor: Colors.background,
-    borderRadius: 16,
-    padding: 20,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  previewCardLabel: {
+  apiHint: {
     ...Type.micro,
     color: Colors.textTertiary,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-  },
-  previewText: {
-    ...Type.body,
-    color: Colors.textPrimary,
-    lineHeight: 24,
-  },
-  previewActions: {
-    gap: 10,
-  },
-  confirmBtn: {
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmBtnPressed: {
-    backgroundColor: Colors.orangeDark,
-  },
-  confirmLabel: {
-    ...Type.bodyMedium,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  discardBtn: {
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.backgroundScreen,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  discardBtnPressed: {
-    opacity: 0.6,
-  },
-  discardLabel: {
-    ...Type.bodyMedium,
-    color: Colors.textSecondary,
-    fontSize: 16,
+    opacity: 0.85,
+    textAlign: 'center',
   },
 });

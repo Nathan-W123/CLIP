@@ -12,6 +12,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import wave
 from contextlib import asynccontextmanager
@@ -98,6 +100,51 @@ def _run_inference(temp_path: str) -> dict[str, Any]:
     return _run_transcribe_stt(temp_path)
 
 
+def _transcript_from_result(result: dict[str, Any]) -> tuple[str, str]:
+    """Gemma returns ``response``; Parakeet STT returns ``segments`` with per-chunk ``text``."""
+    r = result.get("response")
+    if isinstance(r, str) and r.strip():
+        return r.strip(), "response"
+    segs = result.get("segments")
+    if isinstance(segs, list):
+        parts: list[str] = []
+        for seg in segs:
+            if isinstance(seg, dict):
+                t = seg.get("text")
+                if isinstance(t, str) and t.strip():
+                    parts.append(t.strip())
+        if parts:
+            return " ".join(parts), "segments"
+    return "", "empty"
+
+
+def _agent_debug_log(
+    location: str,
+    message: str,
+    data: dict[str, Any],
+    hypothesis_id: str,
+    run_id: str = "post-fix-verify",
+) -> None:
+    # #region agent log
+    log_path = Path(__file__).resolve().parent.parent / ".cursor" / "debug-e2fb5b.log"
+    try:
+        payload = {
+            "sessionId": "e2fb5b",
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(__import__("time").time() * 1000),
+            "hypothesisId": hypothesis_id,
+            "runId": run_id,
+        }
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+    except OSError:
+        pass
+    # #endregion
+
+
 def _wav_summary(path: str) -> tuple[int, int, int] | None:
     """Return (channels, sample_rate, nframes) or None if not a readable WAV."""
     try:
@@ -138,6 +185,44 @@ def _raw_pcm16_mono_16k_wav(data: bytes) -> str:
         w.setframerate(16_000)
         w.writeframes(data)
     return name
+
+
+def _ffmpeg_to_wav_16k_mono(src_path: str) -> str | None:
+    """If ``ffmpeg`` is on PATH, convert arbitrary audio to mono 16 kHz WAV."""
+    if not shutil.which("ffmpeg"):
+        return None
+    out = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    out.close()
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                src_path,
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-f",
+                "wav",
+                out.name,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        try:
+            os.unlink(out.name)
+        except OSError:
+            pass
+        return None
+    return out.name
 
 
 def _prepare_audio_tempfile(initial_path: str, raw_upload: bytes) -> str:
@@ -195,7 +280,11 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
     if not data:
         raise HTTPException(status_code=400, detail="Empty upload")
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    orig_name = file.filename or "audio.wav"
+    suffix = Path(orig_name).suffix.lower()
+    if suffix not in (".wav", ".m4a", ".caf", ".mp4", ".aac", ".mp3", ".bin", ""):
+        suffix = ".bin"
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix or ".bin", delete=False)
     raw_path = tmp.name
     try:
         tmp.write(data)
@@ -203,62 +292,95 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
     finally:
         tmp.close()
 
-    try:
-        path = _prepare_audio_tempfile(raw_path, data)
-    except (ValueError, OSError, wave.Error) as e:
-        try:
-            os.unlink(raw_path)
-        except OSError:
-            pass
-        raise HTTPException(
-            status_code=400,
-            detail=f"Could not read audio ({e!s}). Use 16-bit PCM WAV, mono 16 kHz.",
-        ) from e
+    path_for_inference: str | None = None
+    cleanup_paths: list[str] = []
 
-    info = _wav_summary(path)
-    if info is None:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-        raise HTTPException(
-            status_code=400,
-            detail="Upload must be a valid WAV file.",
-        )
-    _, rate, frames = info
-    if frames < int(rate * 0.15):
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-        raise HTTPException(
-            status_code=400,
-            detail="Audio too short; record at least ~0.15s of speech.",
-        )
-
-    loop = asyncio.get_running_loop()
     try:
-        result = await loop.run_in_executor(None, _run_inference, path)
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        try:
+            path_for_inference = _prepare_audio_tempfile(raw_path, data)
+            cleanup_paths.append(path_for_inference)
+            if os.path.exists(raw_path):
+                cleanup_paths.append(raw_path)
+        except (ValueError, OSError, wave.Error):
+            ff = _ffmpeg_to_wav_16k_mono(raw_path)
+            if ff is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Could not decode audio. Use 16-bit PCM WAV (mono 16 kHz), "
+                        "or install ffmpeg on the server for m4a/caf conversion."
+                    ),
+                )
+            path_for_inference = ff
+            cleanup_paths.extend([raw_path, ff])
+
+        info = _wav_summary(path_for_inference)
+        if info is None:
+            ff2 = _ffmpeg_to_wav_16k_mono(path_for_inference)
+            if ff2:
+                try:
+                    os.unlink(path_for_inference)
+                except OSError:
+                    pass
+                path_for_inference = ff2
+                cleanup_paths.append(ff2)
+                info = _wav_summary(path_for_inference)
+
+        if info is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Could not decode audio. Use 16-bit PCM WAV (mono 16 kHz), "
+                    "or install ffmpeg on the server for m4a/caf conversion."
+                ),
+            )
+
+        _, rate, frames = info
+        if frames < int(rate * 0.15):
+            raise HTTPException(
+                status_code=400,
+                detail="Audio too short; record at least ~0.15s of speech.",
+            )
+
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(
+                None, _run_inference, path_for_inference
+            )
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=502,
+                detail=result.get("error") or "Transcription failed",
+            )
+        text, transcript_source = _transcript_from_result(result)
+        # #region agent log
+        _agent_debug_log(
+            "backend/main.py:transcribe",
+            "transcript extracted",
+            {
+                "stt_backend": STT_BACKEND,
+                "transcript_source": transcript_source,
+                "text_len": len(text),
+            },
+            "H4",
+        )
+        # #endregion
+        return {
+            "transcript": text,
+            "backend": STT_BACKEND,
+            "model": MODEL_ID,
+            "raw": result,
+        }
     finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-
-    if not result.get("success"):
-        raise HTTPException(
-            status_code=502,
-            detail=result.get("error") or "Transcription failed",
-        )
-    text = result.get("response") or ""
-    return {
-        "transcript": text,
-        "backend": STT_BACKEND,
-        "model": MODEL_ID,
-        "raw": result,
-    }
+        for p in set(cleanup_paths):
+            try:
+                if os.path.exists(p):
+                    os.unlink(p)
+            except OSError:
+                pass
 
 
 def main() -> None:

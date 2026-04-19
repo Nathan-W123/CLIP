@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   Pressable,
   StyleSheet,
@@ -12,7 +13,7 @@ import { Colors } from '../src/components/ui/colors';
 import { Type } from '../src/components/ui/typography';
 import { StatusPill } from '../src/components/ui';
 import { MOCK_HISTORY } from '../src/components/mock';
-import { Images } from './images/assets';
+import { Images } from '../src/assets/images';
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ export default function HistoryScreen() {
         >
           <Images.BackIcon width={22} height={18} />
         </Pressable>
-        <Images.ClipLogo width={26} height={28} />
+        <Image source={Images.clipLogo} style={{ width: 26, height: 28 }} resizeMode="contain" />
       </View>
 
       <Text style={styles.title}>History</Text>
