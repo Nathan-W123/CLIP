@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -279,7 +279,7 @@ function CreateOption({
       <Text style={styles.createOptionLabel} numberOfLines={1}>
         {label}
       </Text>
-      <Image source={imageSource} style={styles.createOptionImage} resizeMode="cover" />
+      <Image source={imageSource} style={styles.createOptionImage} resizeMode="contain" />
     </Pressable>
   );
 }
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 130,
-    height: 130,
+    width: 150,
+    height: 150,
   },
 });

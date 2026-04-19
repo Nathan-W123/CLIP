@@ -1,19 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   Pressable,
   StyleSheet,
+<<<<<<< Updated upstream
   ActivityIndicator,
   Animated,
   PanResponder,
   Platform,
+=======
+>>>>>>> Stashed changes
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+<<<<<<< Updated upstream
 import { useSQLiteContext } from 'expo-sqlite';
+=======
+import { useFocusEffect } from 'expo-router';
+>>>>>>> Stashed changes
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../../src/components/ui/colors';
 import { Type } from '../../src/components/ui/typography';
@@ -22,7 +30,11 @@ import {
   appendTranscriptionNote,
   findMockProjectById,
   findProjectContent,
+<<<<<<< Updated upstream
   recordMockCapture,
+=======
+  getVoiceCaptureSection,
+>>>>>>> Stashed changes
 } from '../../src/components/mock';
 import { Images } from '../../src/assets/images';
 import type { ChecklistStep, MockProject, ProjectSection } from '../../src/components/mock';
@@ -43,6 +55,7 @@ import type { ClipRecord } from '../../src/core/schemas';
 import type { DatabaseEntryPayload, ParsedPayload } from '../../src/core/payloadValidation';
 import { randomUuid } from '../../src/utils/randomUuid';
 
+<<<<<<< Updated upstream
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CapturedNote {
@@ -112,6 +125,8 @@ function clipRecordToCapturedNote(r: ClipRecord): CapturedNote {
   };
 }
 
+=======
+>>>>>>> Stashed changes
 // ─── Star badge ───────────────────────────────────────────────────────────────
 
 function StarBadge({ color }: { color: string }) {
@@ -167,59 +182,12 @@ function EmptyProjectNotes({ project }: { project: MockProject }) {
   return <NoteSection section={section} />;
 }
 
-// ─── Captured note card (swipe left to delete) ────────────────────────────────
-
-const DELETE_THRESHOLD = 80;
-
-function NoteCard({ note, onDelete }: { note: CapturedNote; onDelete: () => void }) {
-  const translateX = useRef(new Animated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderMove: (_, g) => {
-        if (g.dx < 0) translateX.setValue(g.dx);
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dx < -DELETE_THRESHOLD) {
-          Animated.timing(translateX, { toValue: -300, duration: 200, useNativeDriver: true }).start(onDelete);
-        } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
-        }
-      },
-    })
-  ).current;
-
-  const deleteOpacity = translateX.interpolate({ inputRange: [-DELETE_THRESHOLD, 0], outputRange: [1, 0], extrapolate: 'clamp' });
-
-  return (
-    <View style={{ overflow: 'hidden', borderRadius: 12 }}>
-      <Animated.View style={[styles.deleteAction, { opacity: deleteOpacity }]}>
-        <Text style={styles.deleteLabel}>Delete</Text>
-      </Animated.View>
-      <Animated.View style={[styles.noteCard, { transform: [{ translateX }] }]} {...panResponder.panHandlers}>
-        <View style={styles.noteCardHeader}>
-          <Text style={styles.noteTemplateName}>{note.templateName}</Text>
-          <Text style={styles.noteTime}>
-            {new Date(note.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        </View>
-        <Text style={styles.noteTranscript}>{note.rawTranscript}</Text>
-        {Object.entries(note.payload).map(([k, v]) => (
-          <Text key={k} style={styles.noteField}>
-            {k}: {String(v)}
-          </Text>
-        ))}
-      </Animated.View>
-    </View>
-  );
-}
-
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 function ProjectDetailScreenInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+<<<<<<< Updated upstream
   const db = useSQLiteContext();
   const { parseTranscript } = useVoiceParser();
 
@@ -248,6 +216,15 @@ function ProjectDetailScreenInner() {
       pulseAnim.setValue(1);
     }
   }, [captureState]);
+=======
+  const [, setRefresh] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      setRefresh(n => n + 1);
+    }, []),
+  );
+>>>>>>> Stashed changes
 
   const project = id ? findMockProjectById(id) : undefined;
 
@@ -261,6 +238,7 @@ function ProjectDetailScreenInner() {
     );
   }
 
+<<<<<<< Updated upstream
   async function startRecording() {
     setErrorMessage(null);
     const perm = await Audio.requestPermissionsAsync();
@@ -377,6 +355,13 @@ function ProjectDetailScreenInner() {
   function deleteNote(noteId: string) {
     setCapturedNotes((prev: CapturedNote[]) => prev.filter((n: CapturedNote) => n.id !== noteId));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+=======
+  function handleCapturePress() {
+    const projectId = Array.isArray(id) ? id[0] : id;
+    if (!projectId) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push(`/record?projectId=${encodeURIComponent(String(projectId))}` as never);
+>>>>>>> Stashed changes
   }
 
   const typeLabel =
@@ -393,10 +378,7 @@ function ProjectDetailScreenInner() {
   const pageContent =
     completedSteps.length === 0 ? findProjectContent(project.id) : null;
 
-  const captureBtnBg =
-    captureState === 'recording' ? '#E53E3E'
-    : captureState === 'parsing'  ? Colors.textTertiary
-    : Colors.orange;
+  const voiceSection = getVoiceCaptureSection(project.id);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -405,7 +387,7 @@ function ProjectDetailScreenInner() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topIcon}>
-          <Images.ProjectStarIcon width={30} height={32} />
+          <Image source={Images.clipLogo} style={{ width: 30, height: 32 }} resizeMode="contain" />
         </View>
 
         <Pressable
@@ -426,6 +408,7 @@ function ProjectDetailScreenInner() {
         </View>
         <Text style={styles.typeLabel}>{typeLabel}</Text>
 
+<<<<<<< Updated upstream
         {errorMessage ? (
           <Text style={styles.errorText}>{errorMessage}</Text>
         ) : null}
@@ -439,6 +422,8 @@ function ProjectDetailScreenInner() {
           </View>
         )}
 
+=======
+>>>>>>> Stashed changes
         {completedSteps.length > 0 ? (
           <View style={styles.stepsContainer}>
             {completedSteps.map((step, i) => (
@@ -454,31 +439,30 @@ function ProjectDetailScreenInner() {
               <NoteSection key={section.id} section={section} />
             ))}
           </View>
-        ) : (
+        ) : !voiceSection ? (
           <View style={styles.sectionsContainer}>
             <EmptyProjectNotes project={project} />
           </View>
-        )}
+        ) : null}
+
+        {voiceSection ? (
+          <View style={styles.sectionsContainer}>
+            <NoteSection section={voiceSection} />
+          </View>
+        ) : null}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
       <View style={styles.captureBar}>
         <Pressable
-          style={[styles.captureBtn, { backgroundColor: captureBtnBg }]}
+          style={[styles.captureBtn, { backgroundColor: Colors.orange }]}
           onPress={handleCapturePress}
-          disabled={captureState === 'parsing'}
         >
-          {captureState === 'parsing' ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <Animated.View style={{ opacity: captureState === 'recording' ? pulseAnim : 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Images.MicIcon width={18} height={22} />
-              <Text style={styles.captureLabel}>
-                {captureState === 'recording' ? 'Stop' : 'Capture'}
-              </Text>
-            </Animated.View>
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Images.MicIcon width={18} height={22} />
+            <Text style={styles.captureLabel}>Capture</Text>
+          </View>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -541,6 +525,7 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     marginBottom: 28,
   },
+<<<<<<< Updated upstream
   errorText: {
     ...Type.subhead,
     color: '#C62828',
@@ -610,6 +595,8 @@ const styles = StyleSheet.create({
   },
 
   // Step blocks
+=======
+>>>>>>> Stashed changes
   stepsContainer: { gap: 0 },
   stepDivider: { height: 32 },
   stepBlock: { gap: 10 },
@@ -641,8 +628,6 @@ const styles = StyleSheet.create({
     ...Type.body,
     color: Colors.textTertiary,
   },
-
-  // Capture bar
   bottomSpacer: { height: 20 },
   captureBar: {
     position: 'absolute',
