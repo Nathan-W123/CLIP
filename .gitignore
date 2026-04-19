@@ -1,0 +1,10 @@
+.DS_Store
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.wav
+
+# Clone separately: git clone https://github.com/cactus-compute/cactus
+cactus/
