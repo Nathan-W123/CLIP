@@ -8,14 +8,14 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "verify": "npx tsx src/verify.ts",
-    "seed": "npx tsx src/scripts/seedSupabase.ts"
+    "seed": "npx tsx src/scripts/seedSupabase.ts",
+    "postinstall": "sed -i '' 's/^  \\$1$/  \"\\$1\"/' node_modules/react-native/scripts/xcode/with-environment.sh 2>/dev/null || true && sed -i '' 's|/bin/sh -c \"\\$WITH_ENVIRONMENT \\$SCRIPT_PHASES_SCRIPT\"|/bin/sh \"\\$WITH_ENVIRONMENT\" \"\\$SCRIPT_PHASES_SCRIPT\"|g' node_modules/react-native/scripts/react_native_pods_utils/script_phases.rb node_modules/react-native/scripts/codegen/generate-artifacts-executor.js 2>/dev/null || true"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",
     "@react-native-community/netinfo": "^11.4.1",
     "@react-navigation/native": "^7.2.2",
     "@supabase/supabase-js": "^2.103.3",
-    "cactus-react-native": "^1.12.0",
     "dotenv": "^17.4.2",
     "expo": "~53.0.0",
     "expo-asset": "~11.1.7",

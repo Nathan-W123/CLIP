@@ -35,9 +35,19 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
   if (!(await tableHasColumn(db, 'captures', 'master_table'))) {
     await db.execAsync(`ALTER TABLE captures ADD COLUMN master_table TEXT`);
   }
+  if (!(await tableHasColumn(db, 'captures', 'sync_attempts'))) {
+    await db.execAsync(`ALTER TABLE captures ADD COLUMN sync_attempts INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!(await tableHasColumn(db, 'captures', 'last_sync_error'))) {
+    await db.execAsync(`ALTER TABLE captures ADD COLUMN last_sync_error TEXT`);
+  }
+  if (!(await tableHasColumn(db, 'captures', 'next_sync_at'))) {
+    await db.execAsync(`ALTER TABLE captures ADD COLUMN next_sync_at TEXT`);
+  }
 
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_captures_master ON captures(master_table);
+    CREATE INDEX IF NOT EXISTS idx_captures_next_sync ON captures(next_sync_at);
   `);
 
   await migrateTemplateSchemas(db);

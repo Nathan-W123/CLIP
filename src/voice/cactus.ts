@@ -1,4 +1,4 @@
-// Types for on-device parse results (Gemma / Cactus). Stub hook fills these today.
+// Types for voice parse results.
 
 export interface ParseResult {
   record: {
@@ -9,4 +9,7 @@ export interface ParseResult {
   };
   confidence: number;
   latencyMs: number;
+  /** True when the LLM determined the transcript is not a valid data entry. */
+  invalid?: boolean;
+  invalidReason?: string;
 }

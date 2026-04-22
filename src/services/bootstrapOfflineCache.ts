@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { syncTemplateCatalogFromSupabase } from './syncTemplateCatalog';
 import { refreshLearnedSchemaCacheFromSupabase } from './schemaLearning';
+import { loadMasterDbCache, syncMasterDbCacheFromSupabase } from './masterDbCache';
 
 export type BootCacheResult = {
   online: boolean;
@@ -16,6 +17,9 @@ export type BootCacheResult = {
 export async function bootstrapOfflineCache(
   db: SQLiteDatabase,
 ): Promise<BootCacheResult> {
+  // Always load local master DB rows into memory — works fully offline.
+  await loadMasterDbCache(db);
+
   const net = await NetInfo.fetch();
   if (!net.isConnected) {
     return { online: false, templatesUpserted: 0 };
@@ -23,6 +27,7 @@ export async function bootstrapOfflineCache(
 
   const syncResult = await syncTemplateCatalogFromSupabase(db);
   await refreshLearnedSchemaCacheFromSupabase();
+  await syncMasterDbCacheFromSupabase();
 
   return {
     online: true,

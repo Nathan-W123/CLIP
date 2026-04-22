@@ -1,32 +1,5 @@
 PODS:
   - boost (1.84.0)
-  - Cactus (1.13.1):
-    - DoubleConversion
-    - glog
-    - hermes-engine
-    - NitroModules
-    - RCT-Folly (= 2024.11.18.00)
-    - RCTRequired
-    - RCTTypeSafety
-    - React-callinvoker
-    - React-Core
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-hermes
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - Yoga
-    - ZIPFoundation (~> 0.9)
   - DoubleConversion (1.1.6)
   - EXAV (15.0.2):
     - ExpoModulesCore
@@ -1980,11 +1953,9 @@ PODS:
     - Yoga
   - SocketRocket (0.7.1)
   - Yoga (0.0.0)
-  - ZIPFoundation (0.9.20)
 
 DEPENDENCIES:
   - boost (from `../node_modules/react-native/third-party-podspecs/boost.podspec`)
-  - Cactus (from `../node_modules/cactus-react-native`)
   - DoubleConversion (from `../node_modules/react-native/third-party-podspecs/DoubleConversion.podspec`)
   - EXAV (from `../node_modules/expo-av/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
@@ -2077,13 +2048,10 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - SocketRocket
-    - ZIPFoundation
 
 EXTERNAL SOURCES:
   boost:
     :podspec: "../node_modules/react-native/third-party-podspecs/boost.podspec"
-  Cactus:
-    :path: "../node_modules/cactus-react-native"
   DoubleConversion:
     :podspec: "../node_modules/react-native/third-party-podspecs/DoubleConversion.podspec"
   EXAV:
@@ -2260,7 +2228,6 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
-  Cactus: ad6ecaf03b52c81d835235824e07ec13efea9ad8
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   EXAV: 4c41f0a6ae54a0b96597abc90e37962ab2ee0d85
   EXConstants: bfe4ae4e5d882e2e0b130e049665d0af4f4cc1b8
@@ -2348,8 +2315,7 @@ SPEC CHECKSUMS:
   RNSVG: 794f269526df9ddc1f79b3d1a202b619df0368e3
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: c758bfb934100bb4bf9cbaccb52557cee35e8bdf
-  ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: 6a550d6ce9d91c8bcdd7256affe47a919ecd9daf
+PODFILE CHECKSUM: 4e2fff3f39381b6a12da380edd853bca483f29aa
 
 COCOAPODS: 1.16.2

@@ -12,7 +12,7 @@ interface StatusConfig {
 }
 
 const STATUS_CONFIG: Record<PillStatus, StatusConfig> = {
-  synced:  { label: 'Synced',  bg: '#D4F7B0', text: '#1F7A00', dot: '#3DC700' },
+  synced:  { label: 'Synced',  bg: '#D4F7B0', text: '#1F7A00' },
   pending: { label: 'Pending', bg: '#555555', text: '#FFFFFF' },
   draft:   { label: 'Draft',   bg: '#EBEBEB', text: '#666666', dot: '#AAAAAA' },
   active:  { label: 'Active',  bg: '#FFF0E6', text: '#D24F18', dot: '#E76400' },

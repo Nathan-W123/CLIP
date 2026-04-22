@@ -50,15 +50,27 @@ target 'Clip' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
-    # fmt 11.x + Apple clang 21 (Xcode 26+): FMT_STRING consteval breaks compile (fmt#4740).
-    fmt_base = File.join(__dir__, 'Pods/fmt/include/fmt/base.h')
-    if File.exist?(fmt_base)
-      original = File.read(fmt_base)
-      patched = original.gsub(
-        "#elif defined(__apple_build_version__) && __apple_build_version__ < 14000029L\n#  define FMT_USE_CONSTEVAL 0  // consteval is broken in Apple clang < 14.",
-        "#elif defined(__apple_build_version__)\n#  define FMT_USE_CONSTEVAL 0  // Apple clang: FMT_STRING + consteval (fmt#4740, Xcode 26+).",
+    # Fix fmt consteval build error with React Native 0.79 on Apple Clang.
+    # Apple Clang's consteval is buggy — patch fmt/base.h to exclude Apple builds
+    # from the nontype template args path, and set C++20 for all pods.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+      end
+    end
+    # fmt marks basic_format_string's constructor consteval, but Apple Clang's
+    # consteval implementation rejects valid calls. Disable it for all Apple builds.
+    fmt_base_h = "#{installer.sandbox.root}/fmt/include/fmt/base.h"
+    if File.exist?(fmt_base_h)
+      content = File.read(fmt_base_h)
+      patched = content.gsub(
+        '__apple_build_version__ < 14000029L',
+        '__apple_build_version__ < 99999999L'
       )
-      File.write(fmt_base, patched) if patched != original
+      if content != patched
+        FileUtils.chmod(0644, fmt_base_h)
+        File.write(fmt_base_h, patched)
+      end
     end
 
     # This is necessary for Xcode 14, because it signs resource bundles by default

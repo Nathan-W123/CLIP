@@ -11,6 +11,12 @@ node_modules/
 venv/
 *.wav
 
+# Large model binaries — download separately
+*.gguf
+*.onnx
+backend/models/
+backend/backend/
+
 # Clone separately: git clone https://github.com/cactus-compute/cactus
 cactus/
 

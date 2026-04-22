@@ -26,7 +26,6 @@ import {
   sortProjectsByLastUsed,
 } from '../src/components/mock';
 import { Images } from '../src/assets/images';
-import { SyncStatus } from '../src/components/SyncStatus';
 import type { MockProject } from '../src/components/mock';
 import type { DatabaseTemplateOption } from '../src/db/templateSchemas';
 import { listDatabaseTemplateOptions } from '../src/db/templateSchemas';
@@ -395,7 +394,6 @@ export default function HomeScreen() {
               <Text style={styles.historyLink}>History</Text>
             </Pressable>
           </View>
-          <SyncStatus />
           <Text style={styles.pageTitle}>Projects</Text>
         </View>
 

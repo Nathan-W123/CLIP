@@ -49,11 +49,20 @@ export type CaptureRow = {
   source: string;
   created_at: string;
   master_table: string | null;
+  sync_attempts?: number;
+  last_sync_error?: string | null;
+  next_sync_at?: string | null;
 };
 
 export async function listUnsyncedCaptures(db: SQLiteDatabase, limit = 50): Promise<CaptureRow[]> {
+  const nowIso = new Date().toISOString();
   return db.getAllAsync<CaptureRow>(
-    `SELECT * FROM captures WHERE synced = 0 ORDER BY created_at ASC LIMIT ?`,
+    `SELECT * FROM captures
+     WHERE synced = 0
+       AND (next_sync_at IS NULL OR next_sync_at <= ?)
+     ORDER BY COALESCE(next_sync_at, created_at) ASC, created_at ASC
+     LIMIT ?`,
+    nowIso,
     limit,
   );
 }
@@ -62,7 +71,33 @@ export async function markCapturesSynced(db: SQLiteDatabase, ids: string[]): Pro
   if (ids.length === 0) return;
   const ph = ids.map(() => '?').join(',');
   await db.runAsync(
-    `UPDATE captures SET synced = 1 WHERE id IN (${ph})`,
+    `UPDATE captures
+     SET synced = 1,
+         sync_attempts = 0,
+         last_sync_error = NULL,
+         next_sync_at = NULL
+     WHERE id IN (${ph})`,
+    ...ids,
+  );
+}
+
+export async function markCapturesSyncFailed(
+  db: SQLiteDatabase,
+  ids: string[],
+  error: string,
+  retryAfterMs: number,
+): Promise<void> {
+  if (ids.length === 0) return;
+  const ph = ids.map(() => '?').join(',');
+  const nextSyncAt = new Date(Date.now() + retryAfterMs).toISOString();
+  await db.runAsync(
+    `UPDATE captures
+     SET sync_attempts = COALESCE(sync_attempts, 0) + 1,
+         last_sync_error = ?,
+         next_sync_at = ?
+     WHERE id IN (${ph})`,
+    error.slice(0, 400),
+    nextSyncAt,
     ...ids,
   );
 }
