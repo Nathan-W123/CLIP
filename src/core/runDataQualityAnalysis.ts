@@ -1,12 +1,12 @@
-import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Template } from './schemas';
 import type { DataQualityIssue, DataQualityResult, DataQualitySeverity } from './dataQuality';
 import { mergeSeverityFromIssues, worstSeverity } from './dataQuality';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import {
   collectStratumNumericSamples,
   extractDatabaseFields,
-  isExtremeNumericOutlier,
   numericKeysFromTemplate,
+  numericTukeySeverity,
   stratifierKeysFromTemplate,
   summarizeSamplesForPrompt,
 } from '../services/stratumStats';
@@ -120,12 +120,21 @@ export async function runDataQualityAnalysis(
     );
     if (cv === null) continue;
 
-    if (samples.length >= 4 && isExtremeNumericOutlier(samples, cv)) {
+    const tukey = numericTukeySeverity(samples, cv);
+    if (tukey === 'error') {
       statIssues.push({
         fieldKey: nk,
         fieldLabel: fieldLabel(template, nk),
         severity: 'error',
-        reason: `Value ${cv} looks extreme vs ${samples.length} prior entries in this same category bucket (column distribution).`,
+        reason: `Value ${cv} is far outside the usual range for ${fieldLabel(template, nk)} in this category (${samples.length} prior samples).`,
+        source: 'stats',
+      });
+    } else if (tukey === 'warn') {
+      statIssues.push({
+        fieldKey: nk,
+        fieldLabel: fieldLabel(template, nk),
+        severity: 'warn',
+        reason: `Value ${cv} is a bit unusual for ${fieldLabel(template, nk)} vs ${samples.length} prior samples in this category.`,
         source: 'stats',
       });
     }
@@ -198,4 +207,18 @@ Re-check whether flagged numerics are truly wrong given category context, or dis
     issues: merged,
     stratumSummary,
   };
+}
+
+/** Stratified Tukey/IQR screening only (no LLM). Call after save with `excludeCaptureId` so the new row is not in its own baseline. */
+export async function runNumericStatScreening(
+  template: Template,
+  payload: unknown,
+  db: SQLiteDatabase,
+  options?: { excludeCaptureId?: string },
+): Promise<DataQualityResult> {
+  const noop: CompleteFn = async () => ({ success: false });
+  return runDataQualityAnalysis(noop, template, payload, db, {
+    ...options,
+    skipGemma: true,
+  });
 }

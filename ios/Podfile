@@ -83,5 +83,18 @@ target 'Clip' do
         end
       end
     end
+
+    # EXConstants uses `bash -l -c "$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh"`.
+    # With spaces in the project path, bash -c parses that string as shell code and splits on spaces
+    # (see: bash: /Users/.../YC: No such file or directory). Run the script as an argument instead.
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'EXConstants'
+
+      target.shell_script_build_phases.each do |phase|
+        next unless phase.name&.include?('Generate app.config')
+
+        phase.shell_script = "bash -l \"${PODS_TARGET_SRCROOT}/../scripts/get-app-config-ios.sh\"\n"
+      end
+    end
   end
 end

@@ -54,6 +54,21 @@ export type CaptureRow = {
   next_sync_at?: string | null;
 };
 
+export async function listRecentCapturesForTemplate(
+  db: SQLiteDatabase,
+  templateId: string,
+  limit = 40,
+): Promise<CaptureRow[]> {
+  return db.getAllAsync<CaptureRow>(
+    `SELECT * FROM captures
+     WHERE template_id = ?
+     ORDER BY datetime(created_at) DESC
+     LIMIT ?`,
+    templateId,
+    limit,
+  );
+}
+
 export async function listUnsyncedCaptures(db: SQLiteDatabase, limit = 50): Promise<CaptureRow[]> {
   const nowIso = new Date().toISOString();
   return db.getAllAsync<CaptureRow>(

@@ -21,10 +21,13 @@ import {
   recordMockCapture,
   appendTranscriptionNote,
 } from '../src/components/mock';
-import { transcribeAudioFile } from '../src/services/transcribe';
+import { fetchHealth } from '../src/services/transcribe';
+import { transcribeWithFallback } from '../src/voice/transcribeWithFallback';
+import { parseTranscriptHeuristic } from '../src/voice/offlineParse';
 import { Images } from '../src/assets/images';
 import { insertCapture } from '../src/db/capturesRepository';
 import { trySyncCaptures } from '../src/services/syncCaptures';
+import { speakSavedCaptureFeedback } from '../src/services/postCaptureSpeech';
 import { applyMasterEnrichmentIfNeeded } from '../src/core/enrichMasterPayload';
 import { coerceFieldValues } from '../src/core/masterSchemas';
 import {
@@ -154,7 +157,7 @@ function RecordScreenInner() {
       const filename = isIosWav ? 'capture.wav' : 'capture.m4a';
       const mime = isIosWav ? 'audio/wav' : 'audio/mp4';
 
-      const { transcript } = await transcribeAudioFile(uri, filename, mime);
+      const { transcript } = await transcribeWithFallback(uri, filename, mime);
       const transcriptText = transcript.trim() || '(No speech detected)';
 
       if (!projectId || !transcriptText || transcriptText.startsWith('(')) {
@@ -173,7 +176,10 @@ function RecordScreenInner() {
         return;
       }
 
-      const pr = await parseTranscript(transcriptText, tmpl);
+      const backendOk = await fetchHealth();
+      const pr = backendOk
+        ? await parseTranscript(transcriptText, tmpl)
+        : parseTranscriptHeuristic(transcriptText, tmpl);
       let payload: ParsedPayload =
         (pr?.record.payload as ParsedPayload | undefined) ??
         fallbackPayload(tmpl, transcriptText);
@@ -202,6 +208,9 @@ function RecordScreenInner() {
       record.validated = validateRecord(record).valid;
       await insertCapture(db, record, 'record_screen', projectId);
       await trySyncCaptures(db);
+      await speakSavedCaptureFeedback(db, tmpl, record.payload, transcriptText, {
+        excludeCaptureId: record.id,
+      });
       appendTranscriptionNote(projectId, transcriptText);
       const firstLine =
         transcriptText.split('\n').find(l => l.trim())?.trim() ?? transcriptText.slice(0, 80);

@@ -29,6 +29,7 @@
           "microphonePermission": "Clip uses the microphone to capture voice input for data entry."
         }
       ],
+      "expo-speech-recognition",
       "expo-asset"
     ],
     "experiments": {

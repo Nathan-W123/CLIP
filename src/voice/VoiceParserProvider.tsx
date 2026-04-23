@@ -7,13 +7,16 @@ import React, {
   useState,
 } from 'react';
 import { Platform } from 'react-native';
+import { getExpoSpeechRecognitionModule } from '../native/expoSpeechRecognitionSafe';
 import type { Template } from '../core/schemas';
 import { applyMasterEnrichmentIfNeeded } from '../core/enrichMasterPayload';
 import { fallbackPayload, validateParsedPayload } from '../core/payloadValidation';
-import { transcribeAudioFile, completeLLM, fetchHealth } from '../services/transcribe';
+import { completeLLM, fetchHealth } from '../services/transcribe';
 import { getLearnedSchemaSnapshot } from '../services/schemaLearning';
 import { getMasterDbPromptBlock } from '../services/masterDbCache';
 import type { ParseResult } from './cactus';
+import { parseTranscriptHeuristic } from './offlineParse';
+import { transcribeWithFallback } from './transcribeWithFallback';
 
 // ── JSON extraction helpers ───────────────────────────────────────────────────
 
@@ -155,15 +158,30 @@ export function VoiceParserProvider({ children }: { children: React.ReactNode })
     void (async () => {
       setIsLoading(true);
       try {
-        const ok = await fetchHealth();
+        const backendOk = await fetchHealth();
+        let deviceOk = false;
+        if (Platform.OS !== 'web') {
+          try {
+            const speechMod = getExpoSpeechRecognitionModule();
+            deviceOk = speechMod ? speechMod.isRecognitionAvailable() : false;
+          } catch {
+            deviceOk = false;
+          }
+        }
         if (!cancelled) {
-          setIsReady(ok);
-          setError(ok ? null : 'Backend not reachable — start the Clip server');
+          setIsReady(backendOk || deviceOk);
+          if (backendOk) {
+            setError(null);
+          } else if (deviceOk) {
+            setError('Clip server offline — on-device speech & simple parse will be used when needed');
+          } else {
+            setError('Backend not reachable and on-device speech is not available on this device');
+          }
         }
       } catch {
         if (!cancelled) {
           setIsReady(false);
-          setError('Backend not reachable — start the Clip server');
+          setError('Could not check voice backend status');
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -285,12 +303,20 @@ Output ONLY the JSON object. No markdown, no commentary.`;
     async (uri: string, template: Template): Promise<ParseResult | null> => {
       const isIos = Platform.OS === 'ios';
       try {
-        const { transcript } = await transcribeAudioFile(
+        const { transcript } = await transcribeWithFallback(
           uri,
           isIos ? 'capture.wav' : 'capture.m4a',
           isIos ? 'audio/wav' : 'audio/mp4',
         );
-        return parseTranscript(transcript, template);
+        const trimmed = transcript.trim();
+        if (!trimmed) return null;
+        // LLM lives on the Clip backend, not in the app binary. Use it whenever the server
+        // is reachable — STT may still be on-device if the server transcribe failed / was skipped.
+        const backendOk = await fetchHealth();
+        if (backendOk) {
+          return parseTranscript(trimmed, template);
+        }
+        return parseTranscriptHeuristic(trimmed, template);
       } catch {
         return null;
       }

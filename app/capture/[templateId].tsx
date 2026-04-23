@@ -1,7 +1,6 @@
-// Capture screen — shows the template name and VoiceCapture component.
-// Navigates back to home after a successful save.
+// Capture screen — shows the template name, VoiceCapture, and local SQLite rows for validation.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,6 +8,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { getTemplateByIdWithDb } from '../../src/core/sqlite.expo';
 import { VoiceParserProvider } from '../../src/voice/VoiceParserProvider';
 import { VoiceCapture } from '../../src/components/VoiceCapture';
+import { LocalCapturesInspector } from '../../src/components/LocalCapturesInspector';
 import { Images } from '../../src/assets/images';
 import { Colors } from '../../src/components/ui/colors';
 import type { Template, ClipRecord } from '../../src/core/schemas';
@@ -18,6 +18,7 @@ export default function CaptureScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
   const [template, setTemplate] = useState<Template | null | undefined>(undefined);
+  const [localDbNonce, setLocalDbNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,9 +31,9 @@ export default function CaptureScreen() {
     };
   }, [db, templateId]);
 
-  const handleSaved = (_record: ClipRecord) => {
-    router.back();
-  };
+  const handleSaved = useCallback((_record: ClipRecord) => {
+    setLocalDbNonce(n => n + 1);
+  }, []);
 
   if (template === undefined) {
     return (
@@ -57,22 +58,23 @@ export default function CaptureScreen() {
   }
 
   return (
-    <VoiceParserProvider>
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <Header onBack={() => router.back()} />
-        <View style={styles.container}>
-          <Text style={styles.title}>{template.name}</Text>
-          <Text style={styles.hint}>
-            {template.type === 'checklist'
-              ? 'Speak each step aloud. Say "confirmed" or describe any notes.'
-              : 'Describe the data you want to capture. Be specific.'}
-          </Text>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <Header onBack={() => router.back()} />
+      <View style={styles.container}>
+        <Text style={styles.title}>{template.name}</Text>
+        <Text style={styles.hint}>
+          {template.type === 'checklist'
+            ? 'Tap the mic, speak a step, pause — it saves when you finish a phrase. Say remove previous entry to undo the last one. Tap mic again when done.'
+            : 'Tap the mic, speak an entry, pause — each phrase saves automatically. Say remove previous entry to undo the last capture. Tap mic again when finished.'}
+        </Text>
+        <VoiceParserProvider>
           <View style={styles.captureArea}>
             <VoiceCapture template={template} onSaved={handleSaved} />
           </View>
-        </View>
-      </SafeAreaView>
-    </VoiceParserProvider>
+        </VoiceParserProvider>
+        <LocalCapturesInspector db={db} templateId={template.id} refreshNonce={localDbNonce} />
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -133,7 +135,9 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   captureArea: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 120,
     alignItems: 'center',
     justifyContent: 'center',
   },

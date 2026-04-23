@@ -31,6 +31,7 @@ import type { ChecklistStep, MockProject, ProjectSection } from '../../src/compo
 import { transcribeAudioFile } from '../../src/services/transcribe';
 import { insertCapture } from '../../src/db/capturesRepository';
 import { trySyncCaptures } from '../../src/services/syncCaptures';
+import { speakSavedCaptureFeedback } from '../../src/services/postCaptureSpeech';
 import { applyMasterEnrichmentIfNeeded } from '../../src/core/enrichMasterPayload';
 import { coerceFieldValues } from '../../src/core/masterSchemas';
 import {
@@ -336,6 +337,9 @@ function ProjectDetailScreenInner() {
       record.validated = validateRecord(record).valid;
       await insertCapture(db, record, 'project_screen', p.id);
       await trySyncCaptures(db);
+      await speakSavedCaptureFeedback(db, tmpl, record.payload, transcriptText, {
+        excludeCaptureId: record.id,
+      });
       appendTranscriptionNote(p.id, transcriptText);
       const firstLine = transcriptText.split('\n').find(l => l.trim())?.trim() ?? transcriptText.slice(0, 80);
       recordMockCapture(p.id, firstLine);

@@ -101,24 +101,42 @@ export async function collectStratumNumericSamples(
   return out;
 }
 
-/** Tukey-style fence with wide multiplier — flags only extreme outliers within the bucket. */
-export function isExtremeNumericOutlier(samples: number[], candidate: number): boolean {
-  if (samples.length < 4) return false;
+/** Tukey fences on prior samples: `warn` at 1.5×IQR, `error` at 3×IQR; needs ≥4 samples. */
+export function numericTukeySeverity(
+  samples: number[],
+  candidate: number,
+): 'ok' | 'warn' | 'error' {
+  if (samples.length < 4) return 'ok';
   const sorted = [...samples].sort((a, b) => a - b);
-  const qIdx = (q: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))))];
+  const qIdx = (q: number) =>
+    sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))))];
   const q1 = qIdx(0.25);
   const q3 = qIdx(0.75);
   const iqr = q3 - q1;
   const med = qIdx(0.5);
 
   if (iqr === 0) {
-    return Math.abs(candidate - med) > 1e-9 && Math.abs(candidate - med) >= Math.max(Math.abs(med) * 0.5, 10);
+    const thr = Math.max(Math.abs(med) * 0.5, 10);
+    const d = Math.abs(candidate - med);
+    if (d <= 1e-9) return 'ok';
+    if (d >= thr * 2) return 'error';
+    if (d >= thr) return 'warn';
+    return 'ok';
   }
 
-  const mult = 3;
-  const low = q1 - mult * iqr;
-  const high = q3 + mult * iqr;
-  return candidate < low || candidate > high;
+  const outside = (mult: number) => {
+    const low = q1 - mult * iqr;
+    const high = q3 + mult * iqr;
+    return candidate < low || candidate > high;
+  };
+  if (outside(3)) return 'error';
+  if (outside(1.5)) return 'warn';
+  return 'ok';
+}
+
+/** Tukey 3×IQR — extreme outliers only (backwards compatible). */
+export function isExtremeNumericOutlier(samples: number[], candidate: number): boolean {
+  return numericTukeySeverity(samples, candidate) === 'error';
 }
 
 export function summarizeSamplesForPrompt(label: string, values: number[]): string {
